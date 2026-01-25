@@ -54,7 +54,7 @@ export const messagesApi = {
 
         return {
           ...cp.conversations,
-          otherUser: participants?.[0]?.profiles,
+          otherUser: (participants as any[])?.[0]?.profiles,
           lastMessage,
           unreadCount: unreadCount || 0,
         };
@@ -75,8 +75,9 @@ export const messagesApi = {
     if (!user) throw new Error('Not authenticated');
 
     // Use the database function to create/get conversation (bypasses RLS issues)
+    // @ts-ignore - Custom RPC function
     const { data, error } = await supabase
-      .rpc('create_conversation_with_participant', { other_user_id: otherUserId });
+      .rpc('create_conversation_with_participant', { other_user_id: otherUserId } as never);
 
     if (error) throw error;
     return data as string;
@@ -108,7 +109,7 @@ export const messagesApi = {
         conversation_id: conversationId,
         sender_id: user.id,
         content,
-      })
+      } as any)
       .select(`
         *,
         profiles (*)
@@ -124,9 +125,10 @@ export const messagesApi = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
+    // @ts-ignore - Supabase typing issue
     const { error } = await supabase
       .from('messages')
-      .update({ read_at: new Date().toISOString() })
+      .update({ read_at: new Date().toISOString() } as never)
       .eq('conversation_id', conversationId)
       .neq('sender_id', user.id)
       .is('read_at', null);

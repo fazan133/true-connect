@@ -1,8 +1,11 @@
 import { createClient } from '@/lib/supabase/client';
-import type { Post, PostWithAuthor, Profile, Comment, CommentWithAuthor } from '@/types/database';
+import type { Post, PostWithAuthor, Profile, Comment, CommentWithAuthor, Like } from '@/types/database';
 
 // Create a shared client instance
 const getSupabase = () => createClient();
+
+// Type helpers for Supabase responses
+type SupabaseResponse<T> = T | null;
 
 // Posts API
 export const postsApi = {
@@ -22,7 +25,7 @@ export const postsApi = {
       .eq('follower_id', user.id);
 
     // Create array of user IDs to show posts from (followed users + own posts)
-    const followingIds = following?.map(f => f.following_id) || [];
+    const followingIds = (following as any[] | null)?.map(f => f.following_id) || [];
     const userIds = [...followingIds, user.id];
 
     const { data, error } = await supabase
@@ -39,7 +42,7 @@ export const postsApi = {
 
     if (error) throw error;
 
-    const posts = data?.map((post) => ({
+    const posts = (data as any[])?.map((post: any) => ({
       ...post,
       _count: {
         likes: post.likes?.length || 0,
@@ -71,13 +74,14 @@ export const postsApi = {
 
     if (error) throw error;
 
+    const postData = data as any;
     return {
-      ...data,
+      ...postData,
       _count: {
-        likes: data.likes?.length || 0,
-        comments: data.comments?.length || 0,
+        likes: postData.likes?.length || 0,
+        comments: postData.comments?.length || 0,
       },
-      isLiked: data.likes?.some((like: any) => like.user_id === user?.id) || false,
+      isLiked: postData.likes?.some((like: any) => like.user_id === user?.id) || false,
     } as PostWithAuthor;
   },
 
@@ -103,7 +107,7 @@ export const postsApi = {
 
     if (error) throw error;
 
-    const posts = data?.map((post) => ({
+    const posts = (data as any[])?.map((post: any) => ({
       ...post,
       _count: {
         likes: post.likes?.length || 0,
@@ -129,7 +133,7 @@ export const postsApi = {
         user_id: user.id,
         content,
         image_url: imageUrl,
-      })
+      } as any)
       .select(`
         *,
         profiles (*)
@@ -156,7 +160,7 @@ export const likesApi = {
 
     const { error } = await supabase
       .from('likes')
-      .insert({ user_id: user.id, post_id: postId });
+      .insert({ user_id: user.id, post_id: postId } as any);
 
     if (error && error.code !== '23505') throw error; // Ignore unique constraint violation
   },
@@ -194,7 +198,7 @@ export const commentsApi = {
 
     // Get replies for each comment
     const commentsWithReplies = await Promise.all(
-      (data || []).map(async (comment) => {
+      ((data || []) as any[]).map(async (comment: any) => {
         const { data: replies } = await supabase
           .from('comments')
           .select(`
@@ -234,7 +238,7 @@ export const commentsApi = {
         post_id: postId,
         content,
         parent_id: parentId,
-      })
+      } as any)
       .select(`
         *,
         profiles (*)
@@ -266,27 +270,29 @@ export const profilesApi = {
 
     if (error) throw error;
 
+    const profileData = data as any;
+
     // Get follower and following counts
     const [{ count: followersCount }, { count: followingCount }] = await Promise.all([
       supabase
         .from('follows')
         .select('*', { count: 'exact', head: true })
-        .eq('following_id', data.id),
+        .eq('following_id', profileData.id),
       supabase
         .from('follows')
         .select('*', { count: 'exact', head: true })
-        .eq('follower_id', data.id),
+        .eq('follower_id', profileData.id),
     ]);
 
     // Check if current user follows this profile
     let isFollowing = false;
     let hasPendingRequest = false;
-    if (user && user.id !== data.id) {
+    if (user && user.id !== profileData.id) {
       const { data: follow } = await supabase
         .from('follows')
         .select('id')
         .eq('follower_id', user.id)
-        .eq('following_id', data.id)
+        .eq('following_id', profileData.id)
         .single();
       isFollowing = !!follow;
 
@@ -296,7 +302,7 @@ export const profilesApi = {
           .from('follow_requests')
           .select('id')
           .eq('requester_id', user.id)
-          .eq('target_id', data.id)
+          .eq('target_id', profileData.id)
           .eq('status', 'pending')
           .single();
         hasPendingRequest = !!request;
@@ -307,16 +313,16 @@ export const profilesApi = {
     const { count: postsCount } = await supabase
       .from('posts')
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', data.id);
+      .eq('user_id', profileData.id);
 
     return {
-      ...data,
+      ...profileData,
       followersCount: followersCount || 0,
       followingCount: followingCount || 0,
       postsCount: postsCount || 0,
       isFollowing,
       hasPendingRequest,
-      isOwnProfile: user?.id === data.id,
+      isOwnProfile: user?.id === profileData.id,
     };
   },
 
@@ -325,15 +331,16 @@ export const profilesApi = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
+    // @ts-ignore - Supabase typing issue
     const { data, error } = await supabase
       .from('profiles')
-      .update(updates)
+      .update(updates as never)
       .eq('id', user.id)
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+    return data as Profile;
   },
 
   async searchProfiles(query: string) {
@@ -345,7 +352,7 @@ export const profilesApi = {
       .limit(20);
 
     if (error) throw error;
-    return data;
+    return (data || []) as Profile[];
   },
 };
 
@@ -358,7 +365,7 @@ export const followsApi = {
 
     const { error } = await supabase
       .from('follows')
-      .insert({ follower_id: user.id, following_id: userId });
+      .insert({ follower_id: user.id, following_id: userId } as any);
 
     if (error && error.code !== '23505') throw error;
   },
@@ -387,7 +394,7 @@ export const followsApi = {
       .eq('following_id', userId);
 
     if (error) throw error;
-    return data?.map((f) => f.follower) || [];
+    return (data as any[])?.map((f: any) => f.follower) || [];
   },
 
   async getFollowing(userId: string) {
@@ -400,7 +407,7 @@ export const followsApi = {
       .eq('follower_id', userId);
 
     if (error) throw error;
-    return data?.map((f) => f.following) || [];
+    return (data as any[])?.map((f: any) => f.following) || [];
   },
 };
 
@@ -413,7 +420,7 @@ export const followRequestsApi = {
 
     const { error } = await supabase
       .from('follow_requests')
-      .insert({ requester_id: user.id, target_id: targetUserId });
+      .insert({ requester_id: user.id, target_id: targetUserId } as any);
 
     if (error && error.code !== '23505') throw error;
   },
@@ -437,9 +444,10 @@ export const followRequestsApi = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
+    // @ts-ignore - Supabase typing issue
     const { error } = await supabase
       .from('follow_requests')
-      .update({ status: 'accepted', updated_at: new Date().toISOString() })
+      .update({ status: 'accepted', updated_at: new Date().toISOString() } as never)
       .eq('requester_id', requesterId)
       .eq('target_id', user.id);
 
@@ -491,7 +499,7 @@ export const followRequestsApi = {
       .eq('status', 'pending');
 
     if (error) throw error;
-    return data?.map(r => r.target_id) || [];
+    return (data as any[])?.map((r: any) => r.target_id) || [];
   },
 
   async getFollowStatus(targetUserId: string) {
@@ -574,9 +582,10 @@ export const notificationsApi = {
 
   async markAsRead(notificationId: string) {
     const supabase = getSupabase();
+    // @ts-ignore - Supabase typing issue
     const { error } = await supabase
       .from('notifications')
-      .update({ read: true })
+      .update({ read: true } as never)
       .eq('id', notificationId);
 
     if (error) throw error;
@@ -587,9 +596,10 @@ export const notificationsApi = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
+    // @ts-ignore - Supabase typing issue
     const { error } = await supabase
       .from('notifications')
-      .update({ read: true })
+      .update({ read: true } as never)
       .eq('user_id', user.id)
       .eq('read', false);
 

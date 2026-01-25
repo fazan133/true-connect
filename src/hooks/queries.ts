@@ -215,7 +215,7 @@ export function useUpdateProfile() {
 
   return useMutation({
     mutationFn: profilesApi.updateProfile,
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.profile(data.username) });
       toast.success('Profile updated!');
     },
