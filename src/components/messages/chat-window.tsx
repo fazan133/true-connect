@@ -9,6 +9,8 @@ import { useAuth } from '@/components/auth/auth-provider';
 import { Avatar } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { messagesApi } from '@/lib/messages-api';
+import { CallButton } from '@/components/calls/call-button';
+import { useCall } from '@/components/calls/call-provider';
 import type { MessageWithSender, Profile } from '@/types/database';
 import Link from 'next/link';
 
@@ -22,6 +24,7 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
   const [message, setMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const { startCall } = useCall();
 
   const { data: messages, isLoading } = useMessages(conversationId);
   const sendMessage = useSendMessage();
@@ -82,25 +85,33 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-neutral-200 dark:border-neutral-800">
-        <Link
-          href="/messages"
-          className="lg:hidden p-2 -ml-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        {otherUser && (
-          <Link href={`/profile/${otherUser.username}`} className="flex items-center gap-3">
-            <Avatar
-              src={otherUser.avatar_url}
-              alt={otherUser.full_name || otherUser.username}
-              size="md"
-            />
-            <div>
-              <p className="font-semibold">{otherUser.full_name || otherUser.username}</p>
-              <p className="text-sm text-neutral-500">@{otherUser.username}</p>
-            </div>
+      <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/messages"
+            className="lg:hidden p-2 -ml-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            <ArrowLeft className="h-5 w-5" />
           </Link>
+          {otherUser && (
+            <Link href={`/profile/${otherUser.username}`} className="flex items-center gap-3">
+              <Avatar
+                src={otherUser.avatar_url}
+                alt={otherUser.full_name || otherUser.username}
+                size="md"
+              />
+              <div>
+                <p className="font-semibold">{otherUser.full_name || otherUser.username}</p>
+                <p className="text-sm text-neutral-500">@{otherUser.username}</p>
+              </div>
+            </Link>
+          )}
+        </div>
+        {otherUser && (
+          <CallButton
+            otherUserId={otherUser.id}
+            onStartCall={(isVideo) => startCall(otherUser, isVideo)}
+          />
         )}
       </div>
 
