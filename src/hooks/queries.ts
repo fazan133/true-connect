@@ -4,7 +4,7 @@ import {
   useQueryClient,
   useInfiniteQuery,
 } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { postsApi, likesApi, commentsApi, profilesApi, followsApi, followRequestsApi, storageApi, notificationsApi, realtimeApi } from '@/lib/api';
 import type { PostWithAuthor } from '@/types/database';
 import toast from 'react-hot-toast';
@@ -406,20 +406,27 @@ export function useMarkAllNotificationsAsRead() {
 export function useRealtimeFeed() {
   const queryClient = useQueryClient();
   const feedQuery = useFeed();
+  const postIdsRef = useRef<string[]>([]);
+  
+  // Update ref when posts change, but don't trigger effect
+  const posts = feedQuery.data?.pages.flatMap(page => page.posts) || [];
+  const currentPostIds = posts.map(post => post.id);
+  
+  // Only update ref if post IDs actually changed
+  if (JSON.stringify(currentPostIds) !== JSON.stringify(postIdsRef.current)) {
+    postIdsRef.current = currentPostIds;
+  }
   
   useEffect(() => {
-    const posts = feedQuery.data?.pages.flatMap(page => page.posts) || [];
-    const postIds = posts.map(post => post.id);
-    
-    if (postIds.length === 0) return;
+    if (postIdsRef.current.length === 0) return;
 
-    const unsubscribe = realtimeApi.subscribeToLikes(postIds, () => {
+    const unsubscribe = realtimeApi.subscribeToLikes(postIdsRef.current, () => {
       // Refetch the feed when likes change
       queryClient.invalidateQueries({ queryKey: queryKeys.feed });
     });
 
     return unsubscribe;
-  }, [feedQuery.data, queryClient]);
+  }, [queryClient]); // Remove feedQuery.data dependency
 
   return feedQuery;
 }

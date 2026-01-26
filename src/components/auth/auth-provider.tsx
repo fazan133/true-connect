@@ -31,12 +31,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    setProfile(data);
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+        console.log('Fetched profile:', data);
+      setProfile(data);
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    }
   };
 
   const refreshProfile = async () => {
@@ -46,36 +51,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+
     const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        await fetchProfile(session.user.id);
+
+      try {
+        // Get the session first
+        const { data: { session } } = await supabase.auth.getSession();
+              console.log('Initializing auth state...', session);
+        
+        if (session) {
+          setSession(session);
+          setUser(session.user);
+          await fetchProfile(session.user.id);
+        }
+      } catch (error) {
+        console.error('Auth init error:', error);
+      } finally {
+          setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+       const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          await fetchProfile(session.user.id);
-        } else {
-          setProfile(null);
-        }
-        setIsLoading(false);
+        console.log('Auth state changed:', event, session);
+        initAuth()
       }
     );
-
-    return () => subscription.unsubscribe();
+    return ()=>{
+      subscription.unsubscribe();
+    };
   }, []);
-
+useEffect(()=>{
+ 
+},[])
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);

@@ -16,7 +16,10 @@ export const postsApi = {
     const to = from + limit - 1;
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    if (!user) {
+      // Return empty feed instead of throwing - auth might still be loading
+      return { posts: [], nextPage: undefined };
+    }
 
     // Get list of users the current user follows
     const { data: following } = await supabase
@@ -563,7 +566,7 @@ export const notificationsApi = {
   async getNotifications() {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    if (!user) return []; // Return empty instead of throwing
 
     const { data, error } = await supabase
       .from('notifications')

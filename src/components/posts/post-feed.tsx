@@ -4,10 +4,13 @@ import { useEffect } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { Loader2 } from 'lucide-react';
 import { useRealtimeFeed } from '@/hooks/queries';
+import { useAuth } from '@/components/auth/auth-provider';
 import { PostCard } from '@/components/posts/post-card';
 import { PostSkeleton } from '@/components/ui/skeleton';
 
 export function PostFeed() {
+  const { user, isLoading: authLoading } = useAuth();
+  
   const {
     data,
     fetchNextPage,
@@ -25,6 +28,17 @@ export function PostFeed() {
       fetchNextPage();
     }
   }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Wait for auth to be ready
+  if (authLoading || !user) {
+    return (
+      <div className="space-y-4">
+        {[...Array(3)].map((_, i) => (
+          <PostSkeleton key={i} />
+        ))}
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
