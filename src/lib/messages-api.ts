@@ -136,10 +136,64 @@ export const messagesApi = {
     if (error) throw error;
   },
 
+  async getTotalUnreadCount() {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    // Get all conversations the user is part of
+    const { data: conversations } = await supabase
+      .from('conversation_participants')
+      .select('conversation_id')
+      .eq('user_id', user.id);
+
+    if (!conversations || conversations.length === 0) return 0;
+
+    const conversationIds = conversations.map((c: any) => c.conversation_id);
+
+    // Count unread messages in all conversations
+    const { count, error } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .in('conversation_id', conversationIds)
+      .neq('sender_id', user.id)
+      .is('read_at', null);
+
+    if (error) return 0;
+    return count || 0;
+  },
+
+  subscribeToAllMessages(userId: string, callback: () => void) {
+    const supabase = getSupabase();
+    
+    const channel = supabase
+      .channel('all-messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          // Only trigger callback if message is not from current user
+          if ((payload.new as any)?.sender_id !== userId) {
+            callback();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
   subscribeToMessages(conversationId: string, callback: (message: MessageWithSender) => void) {
     const supabase = getSupabase();
+    
     const channel = supabase
-      .channel(`messages:${conversationId}`)
+      .channel(`messages-${conversationId}`)
       .on(
         'postgres_changes',
         {
@@ -149,6 +203,7 @@ export const messagesApi = {
           filter: `conversation_id=eq.${conversationId}`,
         },
         async (payload) => {
+          console.log('New message received:', payload);
           // Fetch the full message with profile
           const { data } = await supabase
             .from('messages')
@@ -164,10 +219,13 @@ export const messagesApi = {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Messages subscription status:', status);
+      });
 
     return {
       unsubscribe: () => {
+        console.log('Unsubscribing from messages channel');
         supabase.removeChannel(channel);
       }
     };

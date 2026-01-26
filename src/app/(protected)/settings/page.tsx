@@ -5,20 +5,20 @@ import { useRouter } from 'next/navigation';
 import { Moon, Sun, LogOut, User, Bell, Shield, Loader2, Lock } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/auth/auth-provider';
-import { useUpdateProfile, usePendingFollowRequests, useAcceptFollowRequest, useRejectFollowRequest } from '@/hooks/queries';
+import { useUpdateProfile, useRealtimeFollowRequests, useAcceptFollowRequest, useRejectFollowRequest } from '@/hooks/queries';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Avatar } from '@/components/ui/avatar';
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const { profile, signOut, refreshProfile } = useAuth();
+  const { user, profile, signOut, refreshProfile } = useAuth();
   const router = useRouter();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const updateProfile = useUpdateProfile();
-  const { data: pendingRequests = [] } = usePendingFollowRequests();
+  const { data: pendingRequests = [] } = useRealtimeFollowRequests(user?.id);
   const acceptRequest = useAcceptFollowRequest();
   const rejectRequest = useRejectFollowRequest();
 

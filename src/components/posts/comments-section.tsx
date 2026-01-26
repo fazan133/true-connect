@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Send, Loader2, CornerDownRight } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
-import { useComments, useCreateComment } from '@/hooks/queries';
+import { useRealtimeComments, useCreateComment } from '@/hooks/queries';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Avatar } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
@@ -20,7 +20,7 @@ export function CommentsSection({ postId }: CommentsSectionProps) {
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyContent, setReplyContent] = useState('');
 
-  const { data: comments, isLoading } = useComments(postId);
+  const { data: comments, isLoading } = useRealtimeComments(postId);
   const createComment = useCreateComment();
 
   const handleSubmit = async (e: React.FormEvent) => {

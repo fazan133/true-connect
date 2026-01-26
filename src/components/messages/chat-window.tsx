@@ -42,9 +42,14 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
 
   // Subscribe to real-time messages
   useEffect(() => {
+    if (!conversationId) return;
+    
+    console.log('Setting up message subscription for:', conversationId);
+    
     const subscription = messagesApi.subscribeToMessages(
       conversationId,
       (newMessage: MessageWithSender) => {
+        console.log('Received new message in component:', newMessage);
         queryClient.setQueryData(
           messageQueryKeys.messages(conversationId),
           (old: MessageWithSender[] | undefined) => {
@@ -58,6 +63,7 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
     );
 
     return () => {
+      console.log('Cleaning up message subscription for:', conversationId);
       subscription.unsubscribe();
     };
   }, [conversationId, queryClient]);

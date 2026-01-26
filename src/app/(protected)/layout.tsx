@@ -37,7 +37,7 @@ export default function ProtectedLayout({
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
       <Sidebar />
       <Header />
-      <main className="lg:pl-64 pb-20 lg:pb-0">
+      <main className="lg:pl-64 lg:pt-14 pb-20 lg:pb-0">
         <div className="max-w-2xl mx-auto px-4 py-6">
           {children}
         </div>

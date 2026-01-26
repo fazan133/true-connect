@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Settings, MessageCircle, Calendar, ArrowLeft, Loader2, Lock } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
-import { useProfile, useUserPosts, useFollowUser, useUnfollowUser, useSendFollowRequest, useCancelFollowRequest } from '@/hooks/queries';
+import { useProfile, useUserPosts, useFollowUser, useUnfollowUser, useSendFollowRequest, useCancelFollowRequest, useRealtimeFollows } from '@/hooks/queries';
 import { useStartConversation } from '@/hooks/use-messages';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Avatar } from '@/components/ui/avatar';
@@ -16,6 +16,7 @@ import { ProfileSkeleton, PostSkeleton } from '@/components/ui/skeleton';
 import { Modal } from '@/components/ui/modal';
 import { EditProfileForm } from '@/components/profile/edit-profile-form';
 import { FollowStats } from '@/components/profile/follow-list';
+import { SuggestedUsers } from '@/components/profile/suggested-users';
 
 export default function ProfilePage() {
   const params = useParams();
@@ -27,6 +28,9 @@ export default function ProfilePage() {
 
   const { data: profile, isLoading: profileLoading } = useProfile(username);
   const { data: postsData, isLoading: postsLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useUserPosts(profile?.id || '');
+
+  // Enable real-time updates for follows
+  useRealtimeFollows(user?.id);
 
   const followUser = useFollowUser();
   const unfollowUser = useUnfollowUser();
@@ -180,6 +184,7 @@ export default function ProfilePage() {
               username={profile.username}
               followersCount={profile.followersCount}
               followingCount={profile.followingCount}
+              isOwnProfile={profile.isOwnProfile}
             />
           </div>
         </div>
@@ -229,6 +234,11 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      {/* Suggested Users - Show on own profile */}
+      {profile.isOwnProfile && (
+        <SuggestedUsers limit={5} title="Suggested for you" />
+      )}
 
       {/* Edit Profile Modal */}
       <Modal

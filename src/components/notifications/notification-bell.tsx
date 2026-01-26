@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Bell, Heart, MessageCircle, UserPlus, Check } from 'lucide-react';
+import { Bell, Heart, MessageCircle, UserPlus, Check, X } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/auth-provider';
-import { useNotifications, useUnreadNotificationCount, useMarkNotificationAsRead, useMarkAllNotificationsAsRead, useRealtimeNotifications } from '@/hooks/queries';
+import { useNotifications, useUnreadNotificationCount, useMarkNotificationAsRead, useMarkAllNotificationsAsRead, useRealtimeNotifications, useAcceptFollowRequest, useRejectFollowRequest, useDeleteNotification } from '@/hooks/queries';
 import { Avatar } from '@/components/ui/avatar';
 import { formatDistanceToNow } from '@/lib/utils';
 
@@ -17,6 +17,9 @@ export function NotificationBell() {
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const markAsRead = useMarkNotificationAsRead();
   const markAllAsRead = useMarkAllNotificationsAsRead();
+  const acceptFollowRequest = useAcceptFollowRequest();
+  const rejectFollowRequest = useRejectFollowRequest();
+  const deleteNotification = useDeleteNotification();
   
   // Subscribe to real-time notifications
   useRealtimeNotifications(user?.id);
@@ -121,43 +124,91 @@ export function NotificationBell() {
                     case 'follow_accepted':
                       return `/profile/${notification.actor?.username}`;
                     case 'follow_request':
-                      return '/settings';
+                      return `/profile/${notification.actor?.username}`;
                     default:
                       return notification.post_id ? `/feed?post=${notification.post_id}` : '/feed';
                   }
                 };
 
+                const isFollowRequest = notification.type === 'follow_request';
+
+                const handleAccept = (e: React.MouseEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (notification.actor?.id) {
+                    // Delete notification first (optimistically removes from UI)
+                    deleteNotification.mutate(notification.id);
+                    // Then accept the follow request
+                    acceptFollowRequest.mutate(notification.actor.id);
+                  }
+                };
+
+                const handleReject = (e: React.MouseEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (notification.actor?.id) {
+                    // Delete notification first (optimistically removes from UI)
+                    deleteNotification.mutate(notification.id);
+                    // Then reject the follow request
+                    rejectFollowRequest.mutate(notification.actor.id);
+                  }
+                };
+
                 return (
-                  <Link
+                  <div
                     key={notification.id}
-                    href={getNotificationLink()}
-                    onClick={() => handleNotificationClick(notification)}
                     className={`flex items-start gap-3 p-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors ${
                       !notification.read ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''
                     }`}
                   >
-                    <div className="relative">
-                      <Avatar
-                        src={notification.actor?.avatar_url}
-                        alt={notification.actor?.username || 'User'}
-                        size="sm"
-                      />
-                      <div className="absolute -bottom-1 -right-1 bg-white dark:bg-neutral-900 rounded-full p-0.5">
-                        {getNotificationIcon(notification.type)}
+                    <Link
+                      href={getNotificationLink()}
+                      onClick={() => handleNotificationClick(notification)}
+                      className="flex items-start gap-3 flex-1"
+                    >
+                      <div className="relative">
+                        <Avatar
+                          src={notification.actor?.avatar_url}
+                          alt={notification.actor?.username || 'User'}
+                          size="sm"
+                        />
+                        <div className="absolute -bottom-1 -right-1 bg-white dark:bg-neutral-900 rounded-full p-0.5">
+                          {getNotificationIcon(notification.type)}
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm">
-                        {getNotificationText(notification)}
-                      </p>
-                      <p className="text-xs text-neutral-500 mt-1">
-                        {formatDistanceToNow(notification.created_at)}
-                      </p>
-                    </div>
-                    {!notification.read && (
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm">
+                          {getNotificationText(notification)}
+                        </p>
+                        <p className="text-xs text-neutral-500 mt-1">
+                          {formatDistanceToNow(notification.created_at)}
+                        </p>
+                      </div>
+                    </Link>
+                    {isFollowRequest && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleAccept}
+                          disabled={acceptFollowRequest.isPending}
+                          className="p-2 rounded-full bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50 transition-colors"
+                          title="Accept"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={handleReject}
+                          disabled={rejectFollowRequest.isPending}
+                          className="p-2 rounded-full bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 transition-colors"
+                          title="Decline"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                    {!isFollowRequest && !notification.read && (
                       <div className="w-2 h-2 bg-primary-500 rounded-full mt-2" />
                     )}
-                  </Link>
+                  </div>
                 );
               })}
             </div>

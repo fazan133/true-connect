@@ -2,23 +2,26 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, MessageCircle, User, Settings, PlusSquare, LogOut, Search, Bell } from 'lucide-react';
+import { Home, MessageCircle, User, Settings, PlusSquare, LogOut, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Avatar } from '@/components/ui/avatar';
-import { ThemeToggle } from '@/components/layout/theme-toggle';
-import { NotificationBell } from '@/components/notifications/notification-bell';
+import { useUnreadMessageCount, useRealtimeUnreadMessages } from '@/hooks/use-messages';
 
 const navItems = [
   { href: '/feed', icon: Home, label: 'Home' },
   { href: '/search', icon: Search, label: 'Search' },
   { href: '/create', icon: PlusSquare, label: 'Create' },
-  { href: '/messages', icon: MessageCircle, label: 'Messages' },
+  { href: '/messages', icon: MessageCircle, label: 'Messages', showBadge: true },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { profile, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
+  const { data: unreadMessageCount = 0 } = useUnreadMessageCount();
+  
+  // Subscribe to real-time messages for unread count updates
+  useRealtimeUnreadMessages(user?.id);
 
   return (
     <>
@@ -33,6 +36,7 @@ export function Sidebar() {
         <nav className="flex-1 space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
+            const showMessageBadge = item.showBadge && unreadMessageCount > 0;
             return (
               <Link
                 key={item.href}
@@ -44,7 +48,14 @@ export function Sidebar() {
                     : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900'
                 )}
               >
-                <item.icon className={cn('h-5 w-5', isActive && 'text-primary-500')} />
+                <div className="relative">
+                  <item.icon className={cn('h-5 w-5', isActive && 'text-primary-500')} />
+                  {showMessageBadge && (
+                    <span className="absolute -top-2 -right-2 h-4 w-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-medium">
+                      {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                    </span>
+                  )}
+                </div>
                 {item.label}
               </Link>
             );
@@ -78,16 +89,6 @@ export function Sidebar() {
         </nav>
 
         <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4 space-y-2">
-          <div className="flex items-center justify-between px-2">
-            <span className="text-sm text-neutral-500">Theme</span>
-            <ThemeToggle />
-          </div>
-
-          <div className="flex items-center justify-between px-2">
-            <span className="text-sm text-neutral-500">Notifications</span>
-            <NotificationBell />
-          </div>
-
           <Link
             href={`/profile/${profile?.username}`}
             className="flex items-center gap-3 p-3 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
@@ -120,18 +121,26 @@ export function Sidebar() {
         <div className="flex items-center justify-around">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
+            const showMessageBadge = item.showBadge && unreadMessageCount > 0;
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex flex-col items-center gap-1 p-2 rounded-lg transition-colors',
+                  'flex flex-col items-center gap-1 p-2 rounded-lg transition-colors relative',
                   isActive
                     ? 'text-primary-500'
                     : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
                 )}
               >
-                <item.icon className="h-6 w-6" />
+                <div className="relative">
+                  <item.icon className="h-6 w-6" />
+                  {showMessageBadge && (
+                    <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-medium">
+                      {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                    </span>
+                  )}
+                </div>
               </Link>
             );
           })}

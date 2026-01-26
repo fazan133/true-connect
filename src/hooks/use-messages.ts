@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { messagesApi } from '@/lib/messages-api';
 import toast from 'react-hot-toast';
 
 export const messageQueryKeys = {
   conversations: ['conversations'] as const,
   messages: (conversationId: string) => ['messages', conversationId] as const,
+  unreadCount: ['unreadMessageCount'] as const,
 };
 
 export function useConversations() {
@@ -64,6 +66,32 @@ export function useMarkAsRead() {
     mutationFn: messagesApi.markAsRead,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: messageQueryKeys.conversations });
+      queryClient.invalidateQueries({ queryKey: messageQueryKeys.unreadCount });
     },
   });
+}
+
+// Unread message count hook
+export function useUnreadMessageCount() {
+  return useQuery({
+    queryKey: messageQueryKeys.unreadCount,
+    queryFn: messagesApi.getTotalUnreadCount,
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+}
+
+// Real-time hook for all messages (for unread count badge)
+export function useRealtimeUnreadMessages(userId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const unsubscribe = messagesApi.subscribeToAllMessages(userId, () => {
+      queryClient.invalidateQueries({ queryKey: messageQueryKeys.unreadCount });
+      queryClient.invalidateQueries({ queryKey: messageQueryKeys.conversations });
+    });
+
+    return unsubscribe;
+  }, [userId, queryClient]);
 }

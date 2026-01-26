@@ -296,7 +296,7 @@ export const profilesApi = {
         .select('id')
         .eq('follower_id', user.id)
         .eq('following_id', profileData.id)
-        .single();
+        .maybeSingle();
       isFollowing = !!follow;
 
       // Check for pending follow request
@@ -307,7 +307,7 @@ export const profilesApi = {
           .eq('requester_id', user.id)
           .eq('target_id', profileData.id)
           .eq('status', 'pending')
-          .single();
+          .maybeSingle();
         hasPendingRequest = !!request;
       }
     }
@@ -357,6 +357,52 @@ export const profilesApi = {
     if (error) throw error;
     return (data || []) as Profile[];
   },
+
+  async getSuggestedUsers(limit: number = 5) {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    // Get users that the current user is already following
+    const { data: following } = await supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', user.id);
+
+    const followingIds = (following || []).map((f:any) => f.following_id);
+    
+    // Get pending follow requests sent by the user
+    const { data: pendingRequests } = await supabase
+      .from('follow_requests')
+      .select('target_id')
+      .eq('requester_id', user.id)
+      .eq('status', 'pending');
+
+    const pendingRequestIds = (pendingRequests || []).map((r: any) => r.target_id);
+    
+    // Combine all IDs to exclude
+    const excludeIds = Array.from(new Set([...followingIds, ...pendingRequestIds, user.id]));
+
+    // Get suggested users: newest users that aren't followed yet and don't have pending requests
+    let query = supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    // Exclude all IDs (current user, following, pending requests)
+    if (excludeIds.length > 0) {
+      query = query.not('id', 'in', `(${excludeIds.join(',')})`);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching suggested users:', error);
+      return [];
+    }
+    return (data || []) as Profile[];
+  },
 };
 
 // Follows API
@@ -365,6 +411,17 @@ export const followsApi = {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
+
+    // Check if target user has a private account
+    const { data: targetProfile } = await supabase
+      .from('profiles')
+      .select('is_private')
+      .eq('id', userId)
+      .single();
+
+    if ((targetProfile as any)?.is_private) {
+      throw new Error('Cannot directly follow a private account. Send a follow request instead.');
+    }
 
     const { error } = await supabase
       .from('follows')
@@ -412,6 +469,20 @@ export const followsApi = {
     if (error) throw error;
     return (data as any[])?.map((f: any) => f.following) || [];
   },
+
+  async removeFollower(followerId: string) {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { error } = await supabase
+      .from('follows')
+      .delete()
+      .eq('follower_id', followerId)
+      .eq('following_id', user.id);
+
+    if (error) throw error;
+  },
 };
 
 // Follow Requests API
@@ -420,6 +491,31 @@ export const followRequestsApi = {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
+
+    // Check if request already exists
+    const { data: existingRequest } = await supabase
+      .from('follow_requests')
+      .select('id, status')
+      .eq('requester_id', user.id)
+      .eq('target_id', targetUserId)
+      .maybeSingle();
+
+    const request = existingRequest as { id: string; status: string } | null;
+
+    if (request) {
+      // If there's a rejected or accepted request, delete it and create new one
+      if (request.status === 'rejected' || request.status === 'accepted') {
+        const { error: deleteError } = await supabase
+          .from('follow_requests')
+          .delete()
+          .eq('id', request.id);
+        if (deleteError) throw deleteError;
+        // Continue to create new request below
+      } else {
+        // If already pending, do nothing
+        return;
+      }
+    }
 
     const { error } = await supabase
       .from('follow_requests')
@@ -447,14 +543,22 @@ export const followRequestsApi = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    // @ts-ignore - Supabase typing issue
-    const { error } = await supabase
+    // First create the follow relationship
+    const { error: followError } = await supabase
+      .from('follows')
+      .insert({ follower_id: requesterId, following_id: user.id } as any);
+
+    // Ignore duplicate key error (23505) - they might already be following
+    if (followError && followError.code !== '23505') throw followError;
+
+    // Then delete the follow request
+    const { error: deleteError } = await supabase
       .from('follow_requests')
-      .update({ status: 'accepted', updated_at: new Date().toISOString() } as never)
+      .delete()
       .eq('requester_id', requesterId)
       .eq('target_id', user.id);
 
-    if (error) throw error;
+    if (deleteError) throw deleteError;
   },
 
   async rejectFollowRequest(requesterId: string) {
@@ -508,7 +612,14 @@ export const followRequestsApi = {
   async getFollowStatus(targetUserId: string) {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { isFollowing: false, hasPendingRequest: false };
+    if (!user) return { isFollowing: false, hasPendingRequest: false, isPrivate: false };
+
+    // Get target user's privacy status
+    const { data: targetProfile } = await supabase
+      .from('profiles')
+      .select('is_private')
+      .eq('id', targetUserId)
+      .single();
 
     // Check if following
     const { data: followData } = await supabase
@@ -516,7 +627,7 @@ export const followRequestsApi = {
       .select('id')
       .eq('follower_id', user.id)
       .eq('following_id', targetUserId)
-      .single();
+      .maybeSingle();
 
     // Check if has pending request
     const { data: requestData } = await supabase
@@ -525,11 +636,12 @@ export const followRequestsApi = {
       .eq('requester_id', user.id)
       .eq('target_id', targetUserId)
       .eq('status', 'pending')
-      .single();
+      .maybeSingle();
 
     return {
       isFollowing: !!followData,
       hasPendingRequest: !!requestData,
+      isPrivate: !!(targetProfile as any)?.is_private,
     };
   },
 };
@@ -623,11 +735,52 @@ export const notificationsApi = {
     if (error) return 0;
     return count || 0;
   },
+
+  async deleteNotification(notificationId: string) {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { error, count } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('id', notificationId)
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('Delete notification error:', error);
+      throw error;
+    }
+    console.log('Deleted notification:', notificationId, 'count:', count);
+  },
 };
 
 // Real-time subscription helper
 export const realtimeApi = {
-  subscribeToLikes(postIds: string[], callback: () => void) {
+  subscribeToPosts(callback: () => void) {
+    const supabase = getSupabase();
+    
+    const channel = supabase
+      .channel('posts-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'posts',
+        },
+        () => {
+          callback();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  subscribeToLikes(callback: () => void) {
     const supabase = getSupabase();
     
     const channel = supabase
@@ -639,12 +792,55 @@ export const realtimeApi = {
           schema: 'public',
           table: 'likes',
         },
-        (payload) => {
-          // Check if this like is for one of our posts
-          const postId = (payload.new as any)?.post_id || (payload.old as any)?.post_id;
-          if (postIds.includes(postId)) {
-            callback();
-          }
+        () => {
+          callback();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  subscribeToComments(callback: () => void) {
+    const supabase = getSupabase();
+    
+    const channel = supabase
+      .channel('comments-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comments',
+        },
+        () => {
+          callback();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  subscribeToPostComments(postId: string, callback: () => void) {
+    const supabase = getSupabase();
+    
+    const channel = supabase
+      .channel(`comments-${postId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comments',
+          filter: `post_id=eq.${postId}`,
+        },
+        () => {
+          callback();
         }
       )
       .subscribe();
@@ -658,7 +854,7 @@ export const realtimeApi = {
     const supabase = getSupabase();
     
     const channel = supabase
-      .channel('notifications-changes')
+      .channel(`notifications-${userId}`)
       .on(
         'postgres_changes',
         {
@@ -666,6 +862,79 @@ export const realtimeApi = {
           schema: 'public',
           table: 'notifications',
           filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          callback();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  subscribeToFollowRequests(userId: string, callback: () => void) {
+    const supabase = getSupabase();
+    
+    // Subscribe to follow requests where user is the target (receiving requests)
+    const channel = supabase
+      .channel('follow-requests-target')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follow_requests',
+          filter: `target_id=eq.${userId}`,
+        },
+        () => {
+          callback();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  subscribeToSentFollowRequests(userId: string, callback: () => void) {
+    const supabase = getSupabase();
+    
+    // Subscribe to follow requests where user is the requester (sent requests)
+    const channel = supabase
+      .channel('follow-requests-sender')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follow_requests',
+          filter: `requester_id=eq.${userId}`,
+        },
+        () => {
+          callback();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  subscribeToFollows(callback: () => void) {
+    const supabase = getSupabase();
+    
+    const channel = supabase
+      .channel('follows-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follows',
         },
         () => {
           callback();

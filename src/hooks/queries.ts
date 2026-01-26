@@ -4,7 +4,7 @@ import {
   useQueryClient,
   useInfiniteQuery,
 } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { postsApi, likesApi, commentsApi, profilesApi, followsApi, followRequestsApi, storageApi, notificationsApi, realtimeApi } from '@/lib/api';
 import type { PostWithAuthor } from '@/types/database';
 import toast from 'react-hot-toast';
@@ -233,6 +233,14 @@ export function useSearchProfiles(query: string) {
   });
 }
 
+export function useSuggestedUsers(limit: number = 5) {
+  return useQuery({
+    queryKey: ['suggestedUsers', limit],
+    queryFn: () => profilesApi.getSuggestedUsers(limit),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
 // Follow hooks
 export function useFollowUser() {
   const queryClient = useQueryClient();
@@ -241,6 +249,8 @@ export function useFollowUser() {
     mutationFn: followsApi.followUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.feed });
       toast.success('Following!');
     },
     onError: (error: Error) => {
@@ -256,6 +266,8 @@ export function useUnfollowUser() {
     mutationFn: followsApi.unfollowUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.feed });
       toast.success('Unfollowed');
     },
     onError: (error: Error) => {
@@ -280,6 +292,22 @@ export function useFollowing(userId: string) {
   });
 }
 
+export function useRemoveFollower() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: followsApi.removeFollower,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['followers'] });
+      toast.success('Follower removed');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to remove follower');
+    },
+  });
+}
+
 // Follow Request hooks
 export function useSendFollowRequest() {
   const queryClient = useQueryClient();
@@ -288,6 +316,8 @@ export function useSendFollowRequest() {
     mutationFn: followRequestsApi.sendFollowRequest,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFollowRequests });
       toast.success('Follow request sent!');
     },
     onError: (error: Error) => {
@@ -303,6 +333,8 @@ export function useCancelFollowRequest() {
     mutationFn: followRequestsApi.cancelFollowRequest,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFollowRequests });
       toast.success('Request cancelled');
     },
     onError: (error: Error) => {
@@ -320,6 +352,7 @@ export function useAcceptFollowRequest() {
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingFollowRequests });
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['followers'] });
       toast.success('Follow request accepted!');
     },
     onError: (error: Error) => {
@@ -402,33 +435,92 @@ export function useMarkAllNotificationsAsRead() {
   });
 }
 
+export function useDeleteNotification() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: notificationsApi.deleteNotification,
+    onMutate: async (notificationId) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: queryKeys.notifications });
+      
+      // Snapshot previous value
+      const previousNotifications = queryClient.getQueryData(queryKeys.notifications);
+      
+      // Optimistically remove the notification
+      queryClient.setQueryData(queryKeys.notifications, (old: any[]) => 
+        old ? old.filter((n: any) => n.id !== notificationId) : []
+      );
+      
+      return { previousNotifications };
+    },
+    onError: (err, notificationId, context) => {
+      // Rollback on error
+      if (context?.previousNotifications) {
+        queryClient.setQueryData(queryKeys.notifications, context.previousNotifications);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      queryClient.invalidateQueries({ queryKey: queryKeys.unreadNotificationCount });
+    },
+  });
+}
+
 // Real-time hooks
 export function useRealtimeFeed() {
   const queryClient = useQueryClient();
   const feedQuery = useFeed();
-  const postIdsRef = useRef<string[]>([]);
-  
-  // Update ref when posts change, but don't trigger effect
-  const posts = feedQuery.data?.pages.flatMap(page => page.posts) || [];
-  const currentPostIds = posts.map(post => post.id);
-  
-  // Only update ref if post IDs actually changed
-  if (JSON.stringify(currentPostIds) !== JSON.stringify(postIdsRef.current)) {
-    postIdsRef.current = currentPostIds;
-  }
-  
-  useEffect(() => {
-    if (postIdsRef.current.length === 0) return;
 
-    const unsubscribe = realtimeApi.subscribeToLikes(postIdsRef.current, () => {
+  // Subscribe to new posts
+  useEffect(() => {
+    const unsubscribe = realtimeApi.subscribeToPosts(() => {
+      // Refetch the feed when posts change (new post, edit, delete)
+      queryClient.invalidateQueries({ queryKey: queryKeys.feed });
+    });
+
+    return unsubscribe;
+  }, [queryClient]);
+  
+  // Subscribe to likes changes
+  useEffect(() => {
+    const unsubscribe = realtimeApi.subscribeToLikes(() => {
       // Refetch the feed when likes change
       queryClient.invalidateQueries({ queryKey: queryKeys.feed });
     });
 
     return unsubscribe;
-  }, [queryClient]); // Remove feedQuery.data dependency
+  }, [queryClient]);
+
+  // Subscribe to comments changes
+  useEffect(() => {
+    const unsubscribe = realtimeApi.subscribeToComments(() => {
+      // Refetch the feed when comments change (for comment count)
+      queryClient.invalidateQueries({ queryKey: queryKeys.feed });
+    });
+
+    return unsubscribe;
+  }, [queryClient]);
 
   return feedQuery;
+}
+
+// Real-time comments for a specific post
+export function useRealtimeComments(postId: string) {
+  const queryClient = useQueryClient();
+  const commentsQuery = useComments(postId);
+
+  useEffect(() => {
+    if (!postId) return;
+
+    const unsubscribe = realtimeApi.subscribeToPostComments(postId, () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.comments(postId) });
+    });
+
+    return unsubscribe;
+  }, [postId, queryClient]);
+
+  return commentsQuery;
 }
 
 export function useRealtimeNotifications(userId: string | undefined) {
@@ -441,6 +533,52 @@ export function useRealtimeNotifications(userId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       queryClient.invalidateQueries({ queryKey: queryKeys.unreadNotificationCount });
       toast('You have a new notification!', { icon: '🔔' });
+    });
+
+    return unsubscribe;
+  }, [userId, queryClient]);
+}
+
+export function useRealtimeFollowRequests(userId: string | undefined) {
+  const queryClient = useQueryClient();
+  const followRequestsQuery = usePendingFollowRequests();
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const unsubscribe = realtimeApi.subscribeToFollowRequests(userId, () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFollowRequests });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+    });
+
+    return unsubscribe;
+  }, [userId, queryClient]);
+
+  return followRequestsQuery;
+}
+
+// Real-time hook for follows (to update profiles, suggested users, etc.)
+export function useRealtimeFollows(userId?: string) {
+  const queryClient = useQueryClient();
+
+  // Subscribe to follows table changes
+  useEffect(() => {
+    const unsubscribe = realtimeApi.subscribeToFollows(() => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.feed });
+    });
+
+    return unsubscribe;
+  }, [queryClient]);
+
+  // Subscribe to sent follow requests (for the sender to know when their request is accepted/rejected)
+  useEffect(() => {
+    if (!userId) return;
+
+    const unsubscribe = realtimeApi.subscribeToSentFollowRequests(userId, () => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
     });
 
     return unsubscribe;
