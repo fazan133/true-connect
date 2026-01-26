@@ -41,6 +41,7 @@ export function ActiveCall({
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
   const callStartTime = useRef<number | null>(null);
+  const pendingIceCandidates = useRef<RTCIceCandidate[]>([]);
 
   // Format call duration
   const formatDuration = (seconds: number) => {
@@ -117,6 +118,24 @@ export function ActiveCall({
           sdp: offer,
           isVideo,
         });
+      } else {
+        // Receiver: fetch the pending offer and respond
+        setCallStatus('connecting');
+        const pendingOffer = await callApi.getPendingOffer(otherUser.id);
+        if (pendingOffer) {
+          await pc.setRemoteDescription(new RTCSessionDescription(pendingOffer.data.sdp));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          await callApi.sendSignal(otherUser.id, 'answer', { sdp: answer });
+          
+          // Also add any pending ICE candidates
+          const pendingCandidates = await callApi.getPendingIceCandidates(otherUser.id);
+          for (const candidate of pendingCandidates) {
+            if (candidate.data.candidate) {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate.data.candidate));
+            }
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to initialize call:', error);
@@ -124,29 +143,61 @@ export function ActiveCall({
     }
   }, [isVideo, isOutgoing, otherUser.id, onEndCall]);
 
+  // Helper to flush pending ICE candidates
+  const flushIceCandidates = useCallback(async (pc: RTCPeerConnection) => {
+    for (const candidate of pendingIceCandidates.current) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (e) {
+        console.error('Error adding buffered ICE candidate:', e);
+      }
+    }
+    pendingIceCandidates.current = [];
+  }, []);
+
   // Handle incoming signals
   const handleSignal = useCallback(async (signal: CallSignal) => {
     if (signal.caller_id !== otherUser.id) return;
 
     const pc = peerConnection.current;
-    if (!pc) return;
+    if (!pc) {
+      console.log('No peer connection yet, ignoring signal:', signal.type);
+      return;
+    }
+
+    console.log('Handling signal:', signal.type);
 
     try {
       switch (signal.type) {
         case 'offer':
-          await pc.setRemoteDescription(new RTCSessionDescription(signal.data.sdp));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          await callApi.sendSignal(otherUser.id, 'answer', { sdp: answer });
+          // Only handle if we haven't set remote description yet
+          if (!pc.remoteDescription) {
+            await pc.setRemoteDescription(new RTCSessionDescription(signal.data.sdp));
+            await flushIceCandidates(pc);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            await callApi.sendSignal(otherUser.id, 'answer', { sdp: answer });
+          }
           break;
 
         case 'answer':
-          await pc.setRemoteDescription(new RTCSessionDescription(signal.data.sdp));
+          if (!pc.remoteDescription) {
+            await pc.setRemoteDescription(new RTCSessionDescription(signal.data.sdp));
+            await flushIceCandidates(pc);
+            console.log('Answer received and set, connection should establish');
+          }
           break;
 
         case 'ice-candidate':
           if (signal.data.candidate) {
-            await pc.addIceCandidate(new RTCIceCandidate(signal.data.candidate));
+            const candidate = new RTCIceCandidate(signal.data.candidate);
+            // Buffer if no remote description yet
+            if (pc.remoteDescription) {
+              await pc.addIceCandidate(candidate);
+            } else {
+              console.log('Buffering ICE candidate, no remote description yet');
+              pendingIceCandidates.current.push(candidate);
+            }
           }
           break;
 
@@ -158,7 +209,7 @@ export function ActiveCall({
     } catch (error) {
       console.error('Error handling signal:', error);
     }
-  }, [otherUser.id]);
+  }, [otherUser.id, flushIceCandidates]);
 
   // Initialize call and subscribe to signals
   useEffect(() => {

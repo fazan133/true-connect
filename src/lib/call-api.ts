@@ -39,6 +39,44 @@ export const callApi = {
     return !!theyFollow;
   },
 
+  // Get pending offer from a caller
+  async getPendingOffer(callerId: string): Promise<CallSignal | null> {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('call_signals')
+      .select('*')
+      .eq('caller_id', callerId)
+      .eq('receiver_id', user.id)
+      .eq('type', 'offer')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data as CallSignal;
+  },
+
+  // Get pending ICE candidates from a caller
+  async getPendingIceCandidates(callerId: string): Promise<CallSignal[]> {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from('call_signals')
+      .select('*')
+      .eq('caller_id', callerId)
+      .eq('receiver_id', user.id)
+      .eq('type', 'ice-candidate')
+      .order('created_at', { ascending: true });
+
+    if (error || !data) return [];
+    return data as CallSignal[];
+  },
+
   // Send a call signal (offer, answer, ice-candidate, etc.)
   async sendSignal(receiverId: string, type: CallSignal['type'], data: any) {
     const supabase = getSupabase();
