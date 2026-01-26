@@ -37,6 +37,7 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
     if (conversationId) {
       markAsRead.mutate(conversationId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   // Subscribe to real-time messages
@@ -53,17 +54,13 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
             return [...old, newMessage];
           }
         );
-        // Mark as read if not from current user
-        if (newMessage.sender_id !== user?.id) {
-          markAsRead.mutate(conversationId);
-        }
       }
     );
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [conversationId, queryClient, user?.id]);
+  }, [conversationId, queryClient]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();

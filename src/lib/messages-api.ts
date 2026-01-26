@@ -43,7 +43,7 @@ export const messagesApi = {
           .eq('conversation_id', cp.conversation_id)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         const { count: unreadCount } = await supabase
           .from('messages')
@@ -138,7 +138,7 @@ export const messagesApi = {
 
   subscribeToMessages(conversationId: string, callback: (message: MessageWithSender) => void) {
     const supabase = getSupabase();
-    return supabase
+    const channel = supabase
       .channel(`messages:${conversationId}`)
       .on(
         'postgres_changes',
@@ -150,8 +150,7 @@ export const messagesApi = {
         },
         async (payload) => {
           // Fetch the full message with profile
-          const freshSupabase = getSupabase();
-          const { data } = await freshSupabase
+          const { data } = await supabase
             .from('messages')
             .select(`
               *,
@@ -166,5 +165,11 @@ export const messagesApi = {
         }
       )
       .subscribe();
+
+    return {
+      unsubscribe: () => {
+        supabase.removeChannel(channel);
+      }
+    };
   },
 };
