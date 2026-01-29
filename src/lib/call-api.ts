@@ -12,31 +12,21 @@ export interface CallSignal {
 }
 
 export const callApi = {
-  // Check if users mutually follow each other
-  async checkMutualFollow(otherUserId: string): Promise<boolean> {
+  // Check if users are friends (can call each other)
+  async checkAreFriends(otherUserId: string): Promise<boolean> {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
 
-    // Check if current user follows the other user
-    const { data: iFollow } = await supabase
-      .from('follows')
+    // Check if there's a friendship between the users
+    const { data: friendship } = await supabase
+      .from('friendships')
       .select('id')
-      .eq('follower_id', user.id)
-      .eq('following_id', otherUserId)
+      .eq('user_id', user.id)
+      .eq('friend_id', otherUserId)
       .maybeSingle();
 
-    if (!iFollow) return false;
-
-    // Check if other user follows current user
-    const { data: theyFollow } = await supabase
-      .from('follows')
-      .select('id')
-      .eq('follower_id', otherUserId)
-      .eq('following_id', user.id)
-      .maybeSingle();
-
-    return !!theyFollow;
+    return !!friendship;
   },
 
   // Get pending offer from a caller

@@ -16,9 +16,9 @@ export function CallButton({ otherUserId, onStartCall }: CallButtonProps) {
   const handleCall = async (isVideo: boolean) => {
     setChecking(true);
     try {
-      const canCall = await callApi.checkMutualFollow(otherUserId);
+      const canCall = await callApi.checkAreFriends(otherUserId);
       if (!canCall) {
-        toast.error('You can only call users who follow you back');
+        toast.error('You can only call your friends');
         return;
       }
       onStartCall(isVideo);

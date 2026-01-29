@@ -23,7 +23,7 @@ export function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedQuery = useDebounce(searchQuery, 300);
   
-  // Only fetch friends instead of all users
+  // Fetch friends when user is authenticated
   const { data: friends, isLoading: friendsLoading } = useFriends(user?.id || '');
   const startConversation = useStartConversation();
 

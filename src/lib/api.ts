@@ -353,11 +353,20 @@ export const profilesApi = {
 
   async searchProfiles(query: string) {
     const supabase = getSupabase();
-    const { data, error } = await supabase
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    let queryBuilder = supabase
       .from('profiles')
       .select('*')
       .or(`username.ilike.%${query}%,full_name.ilike.%${query}%`)
       .limit(20);
+
+    // Exclude current user from results
+    if (user) {
+      queryBuilder = queryBuilder.neq('id', user.id);
+    }
+
+    const { data, error } = await queryBuilder;
 
     if (error) throw error;
     return (data || []) as Profile[];
@@ -449,15 +458,25 @@ export const friendsApi = {
 
   async getFriends(userId: string) {
     const supabase = getSupabase();
-    const { data, error } = await supabase
+    
+    // Get friend IDs first
+    const { data: friendships, error: friendshipsError } = await supabase
       .from('friendships')
-      .select(`
-        friend:profiles!friendships_friend_id_fkey (*)
-      `)
+      .select('friend_id')
       .eq('user_id', userId);
 
-    if (error) throw error;
-    return (data as any[])?.map((f: any) => f.friend) || [];
+    if (friendshipsError) throw friendshipsError;
+    if (!friendships || friendships.length === 0) return [];
+
+    // Then get friend profiles
+    const friendIds = friendships.map((f: any) => f.friend_id);
+    const { data: friends, error: friendsError } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', friendIds);
+
+    if (friendsError) throw friendsError;
+    return friends || [];
   },
 
   async areFriends(otherUserId: string): Promise<boolean> {
