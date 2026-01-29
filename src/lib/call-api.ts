@@ -77,6 +77,43 @@ export const callApi = {
     return data as CallSignal[];
   },
 
+  // Get pending answer from receiver (for caller to fetch)
+  async getPendingAnswer(receiverId: string): Promise<CallSignal | null> {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('call_signals')
+      .select('*')
+      .eq('caller_id', receiverId)
+      .eq('receiver_id', user.id)
+      .eq('type', 'answer')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data as CallSignal;
+  },
+
+  // Get all pending signals from other user (for polling)
+  async getPendingSignals(otherUserId: string): Promise<CallSignal[]> {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from('call_signals')
+      .select('*')
+      .eq('caller_id', otherUserId)
+      .eq('receiver_id', user.id)
+      .order('created_at', { ascending: true });
+
+    if (error || !data) return [];
+    return data as CallSignal[];
+  },
+
   // Send a call signal (offer, answer, ice-candidate, etc.)
   async sendSignal(receiverId: string, type: CallSignal['type'], data: any) {
     const supabase = getSupabase();
@@ -136,10 +173,30 @@ export const callApi = {
 };
 
 // WebRTC configuration
+// Using free TURN servers from Open Relay Project for better connectivity
 export const rtcConfig: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    // Free TURN servers from Metered (limited but works for testing)
+    {
+      urls: 'turn:a.relay.metered.ca:80',
+      username: 'e5f1a882c8d5e6f8c9a7b3d2',
+      credential: 'kP8mN3vR5tY7wX9z',
+    },
+    {
+      urls: 'turn:a.relay.metered.ca:443',
+      username: 'e5f1a882c8d5e6f8c9a7b3d2',
+      credential: 'kP8mN3vR5tY7wX9z',
+    },
+    {
+      urls: 'turn:a.relay.metered.ca:443?transport=tcp',
+      username: 'e5f1a882c8d5e6f8c9a7b3d2',
+      credential: 'kP8mN3vR5tY7wX9z',
+    },
   ],
+  iceCandidatePoolSize: 10,
 };

@@ -38,6 +38,7 @@ export function ActiveCall({
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
   const callStartTime = useRef<number | null>(null);
@@ -86,10 +87,16 @@ export function ActiveCall({
 
       // Handle remote stream
       pc.ontrack = (event) => {
-        if (remoteVideoRef.current && event.streams[0]) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-          setCallStatus('connected');
-          callStartTime.current = Date.now();
+        console.log('Received remote track:', event.track.kind);
+        if (event.streams[0]) {
+          // Set video element source
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = event.streams[0];
+          }
+          // Also set audio element for voice-only calls or as backup
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = event.streams[0];
+          }
         }
       };
 
@@ -104,7 +111,25 @@ export function ActiveCall({
 
       // Handle connection state changes
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        console.log('Connection state:', pc.connectionState);
+        if (pc.connectionState === 'connected') {
+          setCallStatus('connected');
+          callStartTime.current = Date.now();
+        } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+          handleEndCall();
+        }
+      };
+
+      // Handle ICE connection state changes
+      pc.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          setCallStatus('connected');
+          if (!callStartTime.current) {
+            callStartTime.current = Date.now();
+          }
+        } else if (pc.iceConnectionState === 'failed') {
+          console.error('ICE connection failed');
           handleEndCall();
         }
       };
@@ -118,6 +143,38 @@ export function ActiveCall({
           sdp: offer,
           isVideo,
         });
+        
+        // Poll for answer since realtime subscription might miss it
+        const pollForAnswer = async () => {
+          const maxAttempts = 60; // 30 seconds
+          for (let i = 0; i < maxAttempts; i++) {
+            if (!peerConnection.current || peerConnection.current.connectionState === 'connected') {
+              return;
+            }
+            
+            const pendingAnswer = await callApi.getPendingAnswer(otherUser.id);
+            if (pendingAnswer && !pc.remoteDescription) {
+              console.log('Found pending answer via polling');
+              await pc.setRemoteDescription(new RTCSessionDescription(pendingAnswer.data.sdp));
+              
+              // Also get any pending ICE candidates
+              const pendingCandidates = await callApi.getPendingIceCandidates(otherUser.id);
+              for (const candidate of pendingCandidates) {
+                if (candidate.data.candidate) {
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate.data.candidate));
+                  } catch (e) {
+                    console.error('Error adding ICE candidate:', e);
+                  }
+                }
+              }
+              return;
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        };
+        pollForAnswer();
       } else {
         // Receiver: fetch the pending offer and respond
         setCallStatus('connecting');
@@ -132,9 +189,39 @@ export function ActiveCall({
           const pendingCandidates = await callApi.getPendingIceCandidates(otherUser.id);
           for (const candidate of pendingCandidates) {
             if (candidate.data.candidate) {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate.data.candidate));
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate.data.candidate));
+              } catch (e) {
+                console.error('Error adding ICE candidate:', e);
+              }
             }
           }
+          
+          // Continue polling for new ICE candidates
+          const pollForIceCandidates = async () => {
+            const processedIds = new Set(pendingCandidates.map(c => c.id));
+            const maxAttempts = 30;
+            for (let i = 0; i < maxAttempts; i++) {
+              if (!peerConnection.current || peerConnection.current.connectionState === 'connected') {
+                return;
+              }
+              
+              const newCandidates = await callApi.getPendingIceCandidates(otherUser.id);
+              for (const candidate of newCandidates) {
+                if (!processedIds.has(candidate.id) && candidate.data.candidate) {
+                  processedIds.add(candidate.id);
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate.data.candidate));
+                  } catch (e) {
+                    console.error('Error adding ICE candidate:', e);
+                  }
+                }
+              }
+              
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          };
+          pollForIceCandidates();
         }
       }
     } catch (error) {
@@ -268,6 +355,9 @@ export function ActiveCall({
       "fixed z-50 bg-neutral-900 flex flex-col",
       isFullscreen ? "inset-0" : "bottom-4 right-4 w-96 h-[500px] rounded-2xl shadow-2xl"
     )}>
+      {/* Hidden audio element for voice calls */}
+      <audio ref={remoteAudioRef} autoPlay playsInline />
+      
       {/* Remote Video / Avatar */}
       <div className="flex-1 relative bg-neutral-800 overflow-hidden rounded-t-2xl">
         {callStatus === 'connected' && isVideo && !isVideoOff ? (
