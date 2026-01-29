@@ -429,6 +429,7 @@ export const friendsApi = {
     }
 
     // Use the database function to create mutual friendship
+    // @ts-ignore - RPC function exists in database
     const { error } = await supabase.rpc('add_friend_direct', { friend_user_id: userId });
 
     if (error) throw error;
@@ -440,6 +441,7 @@ export const friendsApi = {
     if (!user) throw new Error('Not authenticated');
 
     // Use the database function to remove mutual friendship
+    // @ts-ignore - RPC function exists in database
     const { error } = await supabase.rpc('remove_friend', { friend_user_id: userId });
 
     if (error) throw error;
@@ -544,6 +546,7 @@ export const friendRequestsApi = {
     if (!request) throw new Error('Friend request not found');
 
     // Use database function to accept and create mutual friendship
+    // @ts-ignore - RPC function exists in database
     const { error } = await supabase.rpc('accept_friend_request', { request_id: request.id });
 
     if (error) throw error;

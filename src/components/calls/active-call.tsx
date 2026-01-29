@@ -116,7 +116,7 @@ export function ActiveCall({
           setCallStatus('connected');
           callStartTime.current = Date.now();
         } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-          handleEndCall();
+          handleUserEndCall();
         }
       };
 
@@ -130,7 +130,7 @@ export function ActiveCall({
           }
         } else if (pc.iceConnectionState === 'failed') {
           console.error('ICE connection failed');
-          handleEndCall();
+          handleUserEndCall();
         }
       };
 

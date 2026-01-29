@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Moon, Sun, LogOut, User, Bell, Shield, Loader2, Lock } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/auth/auth-provider';
-import { useUpdateProfile, useRealtimeFollowRequests, useAcceptFollowRequest, useRejectFollowRequest } from '@/hooks/queries';
+import { useUpdateProfile, useRealtimeFriendRequests, useAcceptFriendRequest, useRejectFriendRequest } from '@/hooks/queries';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Avatar } from '@/components/ui/avatar';
@@ -18,9 +18,9 @@ export default function SettingsPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const updateProfile = useUpdateProfile();
-  const { data: pendingRequests = [] } = useRealtimeFollowRequests(user?.id);
-  const acceptRequest = useAcceptFollowRequest();
-  const rejectRequest = useRejectFollowRequest();
+  const { data: pendingRequests = [] } = useRealtimeFriendRequests(user?.id);
+  const acceptRequest = useAcceptFriendRequest();
+  const rejectRequest = useRejectFriendRequest();
 
   const handleTogglePrivate = async () => {
     await updateProfile.mutateAsync({ is_private: !profile?.is_private });
@@ -156,13 +156,13 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Follow Requests Section (only show if private account) */}
+      {/* Friend Requests Section (only show if private account) */}
       {profile?.is_private && (
         <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
           <div className="p-4 border-b border-neutral-200 dark:border-neutral-800">
             <h2 className="font-semibold flex items-center gap-2">
               <User className="h-5 w-5" />
-              Follow Requests
+              Friend Requests
               {pendingRequests.length > 0 && (
                 <span className="bg-primary-500 text-white text-xs px-2 py-0.5 rounded-full">
                   {pendingRequests.length}
@@ -173,7 +173,7 @@ export default function SettingsPage() {
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {pendingRequests.length === 0 ? (
               <div className="p-4 text-center text-neutral-500">
-                No pending follow requests
+                No pending friend requests
               </div>
             ) : (
               pendingRequests.map((request: any) => (

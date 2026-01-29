@@ -265,7 +265,18 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      add_friend_direct: {
+        Args: { friend_user_id: string }
+        Returns: void
+      }
+      remove_friend: {
+        Args: { friend_user_id: string }
+        Returns: void
+      }
+      accept_friend_request: {
+        Args: { requester_user_id: string }
+        Returns: void
+      }
     }
     Enums: {
       [_ in never]: never

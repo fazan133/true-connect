@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Bell, Heart, MessageCircle, UserPlus, Check, X } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/auth-provider';
-import { useNotifications, useUnreadNotificationCount, useMarkNotificationAsRead, useMarkAllNotificationsAsRead, useRealtimeNotifications, useAcceptFollowRequest, useRejectFollowRequest, useDeleteNotification } from '@/hooks/queries';
+import { useNotifications, useUnreadNotificationCount, useMarkNotificationAsRead, useMarkAllNotificationsAsRead, useRealtimeNotifications, useAcceptFriendRequest, useRejectFriendRequest, useDeleteNotification } from '@/hooks/queries';
 import { Avatar } from '@/components/ui/avatar';
 import { formatDistanceToNow } from '@/lib/utils';
 
@@ -17,8 +17,8 @@ export function NotificationBell() {
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const markAsRead = useMarkNotificationAsRead();
   const markAllAsRead = useMarkAllNotificationsAsRead();
-  const acceptFollowRequest = useAcceptFollowRequest();
-  const rejectFollowRequest = useRejectFollowRequest();
+  const acceptFriendRequest = useAcceptFriendRequest();
+  const rejectFriendRequest = useRejectFriendRequest();
   const deleteNotification = useDeleteNotification();
   
   // Subscribe to real-time notifications
@@ -43,9 +43,9 @@ export function NotificationBell() {
         return <MessageCircle className="h-4 w-4 text-blue-500" />;
       case 'follow':
         return <UserPlus className="h-4 w-4 text-green-500" />;
-      case 'follow_request':
+      case 'friend_request':
         return <UserPlus className="h-4 w-4 text-yellow-500" />;
-      case 'follow_accepted':
+      case 'friend_accept':
         return <UserPlus className="h-4 w-4 text-green-500" />;
       default:
         return <Bell className="h-4 w-4" />;
@@ -60,11 +60,11 @@ export function NotificationBell() {
       case 'comment':
         return <><strong>{actorName}</strong> commented on your post</>;
       case 'follow':
-        return <><strong>{actorName}</strong> started following you</>;
-      case 'follow_request':
-        return <><strong>{actorName}</strong> requested to follow you</>;
-      case 'follow_accepted':
-        return <><strong>{actorName}</strong> accepted your follow request</>;
+        return <><strong>{actorName}</strong> added you as a friend</>;
+      case 'friend_request':
+        return <><strong>{actorName}</strong> sent you a friend request</>;
+      case 'friend_accept':
+        return <><strong>{actorName}</strong> accepted your friend request</>;
       default:
         return 'New notification';
     }
@@ -121,16 +121,16 @@ export function NotificationBell() {
                 const getNotificationLink = () => {
                   switch (notification.type) {
                     case 'follow':
-                    case 'follow_accepted':
+                    case 'friend_accept':
                       return `/profile/${notification.actor?.username}`;
-                    case 'follow_request':
+                    case 'friend_request':
                       return `/profile/${notification.actor?.username}`;
                     default:
                       return notification.post_id ? `/feed?post=${notification.post_id}` : '/feed';
                   }
                 };
 
-                const isFollowRequest = notification.type === 'follow_request';
+                const isFriendRequest = notification.type === 'friend_request';
 
                 const handleAccept = (e: React.MouseEvent) => {
                   e.preventDefault();
@@ -138,8 +138,8 @@ export function NotificationBell() {
                   if (notification.actor?.id) {
                     // Delete notification first (optimistically removes from UI)
                     deleteNotification.mutate(notification.id);
-                    // Then accept the follow request
-                    acceptFollowRequest.mutate(notification.actor.id);
+                    // Then accept the friend request
+                    acceptFriendRequest.mutate(notification.actor.id);
                   }
                 };
 
@@ -149,8 +149,8 @@ export function NotificationBell() {
                   if (notification.actor?.id) {
                     // Delete notification first (optimistically removes from UI)
                     deleteNotification.mutate(notification.id);
-                    // Then reject the follow request
-                    rejectFollowRequest.mutate(notification.actor.id);
+                    // Then reject the friend request
+                    rejectFriendRequest.mutate(notification.actor.id);
                   }
                 };
 
@@ -185,11 +185,11 @@ export function NotificationBell() {
                         </p>
                       </div>
                     </Link>
-                    {isFollowRequest && (
+                    {isFriendRequest && (
                       <div className="flex items-center gap-2">
                         <button
                           onClick={handleAccept}
-                          disabled={acceptFollowRequest.isPending}
+                          disabled={acceptFriendRequest.isPending}
                           className="p-2 rounded-full bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50 transition-colors"
                           title="Accept"
                         >
@@ -197,7 +197,7 @@ export function NotificationBell() {
                         </button>
                         <button
                           onClick={handleReject}
-                          disabled={rejectFollowRequest.isPending}
+                          disabled={rejectFriendRequest.isPending}
                           className="p-2 rounded-full bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 transition-colors"
                           title="Decline"
                         >
@@ -205,7 +205,7 @@ export function NotificationBell() {
                         </button>
                       </div>
                     )}
-                    {!isFollowRequest && !notification.read && (
+                    {!isFriendRequest && !notification.read && (
                       <div className="w-2 h-2 bg-primary-500 rounded-full mt-2" />
                     )}
                   </div>
