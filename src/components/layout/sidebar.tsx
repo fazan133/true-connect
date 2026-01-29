@@ -34,8 +34,8 @@ export function Sidebar() {
 
         <nav className="flex-1 space-y-1">
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
-            const showMessageBadge = item.showBadge && unreadMessageCount > 0;
+            const isActive = pathname === item.href || (item.href === '/messages' && pathname.startsWith('/messages'));
+            const showMessageBadge = item.showBadge && unreadMessageCount > 0 && !pathname.startsWith('/messages');
             return (
               <Link
                 key={item.href}
@@ -119,8 +119,8 @@ export function Sidebar() {
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 px-4 z-40 safe-area-bottom">
         <div className="flex items-center justify-around h-16">
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
-            const showMessageBadge = item.showBadge && unreadMessageCount > 0;
+            const isActive = pathname === item.href || (item.href === '/messages' && pathname.startsWith('/messages'));
+            const showMessageBadge = item.showBadge && unreadMessageCount > 0 && !pathname.startsWith('/messages');
             return (
               <Link
                 key={item.href}
