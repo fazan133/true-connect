@@ -35,6 +35,24 @@
   body {
     @apply bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-50;
     font-feature-settings: "rlig" 1, "calt" 1;
+    /* PWA safe areas */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    /* Prevent pull-to-refresh on mobile */
+    overscroll-behavior-y: contain;
+  }
+  
+  /* Prevent iOS text size adjustment */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  
+  /* Ensure touch targets are accessible */
+  a, button {
+    touch-action: manipulation;
   }
 }
 

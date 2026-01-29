@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { UserPlus, Loader2, Clock } from 'lucide-react';
-import { useSuggestedUsers, useFollowUser, useSendFollowRequest, useRealtimeFollows } from '@/hooks/queries';
+import { useSuggestedUsers, useAddFriend, useSendFriendRequest, useRealtimeFriendships } from '@/hooks/queries';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,12 @@ interface SuggestedUsersProps {
   showViewAll?: boolean;
 }
 
-export function SuggestedUsers({ limit = 5, title = 'Suggested for you', showViewAll = true }: SuggestedUsersProps) {
+export function SuggestedUsers({ limit = 5, title = 'People you may know', showViewAll = true }: SuggestedUsersProps) {
   const { user } = useAuth();
   const { data: users, isLoading } = useSuggestedUsers(limit);
   
-  // Enable real-time updates for follows
-  useRealtimeFollows(user?.id);
+  // Enable real-time updates for friendships
+  useRealtimeFriendships(user?.id);
 
   if (isLoading) {
     return (
@@ -66,26 +66,26 @@ export function SuggestedUsers({ limit = 5, title = 'Suggested for you', showVie
 }
 
 function SuggestedUserCard({ user }: { user: Profile }) {
-  const [status, setStatus] = useState<'idle' | 'following' | 'requested'>('idle');
-  const followUser = useFollowUser();
-  const sendFollowRequest = useSendFollowRequest();
+  const [status, setStatus] = useState<'idle' | 'friend' | 'requested'>('idle');
+  const addFriend = useAddFriend();
+  const sendFriendRequest = useSendFriendRequest();
   
-  const isLoading = followUser.isPending || sendFollowRequest.isPending;
+  const isLoading = addFriend.isPending || sendFriendRequest.isPending;
 
-  const handleFollow = () => {
+  const handleAddFriend = () => {
     if (user.is_private) {
-      sendFollowRequest.mutate(user.id, {
+      sendFriendRequest.mutate(user.id, {
         onSuccess: () => setStatus('requested'),
       });
     } else {
-      followUser.mutate(user.id, {
-        onSuccess: () => setStatus('following'),
+      addFriend.mutate(user.id, {
+        onSuccess: () => setStatus('friend'),
       });
     }
   };
 
-  // Don't show card if already following or requested
-  if (status === 'following') {
+  // Don't show card if already friends or requested
+  if (status === 'friend') {
     return null;
   }
 
@@ -107,7 +107,7 @@ function SuggestedUserCard({ user }: { user: Profile }) {
         </Link>
       </div>
       <Button
-        onClick={handleFollow}
+        onClick={handleAddFriend}
         disabled={isLoading || status === 'requested'}
         size="sm"
         variant={status === 'requested' ? 'outline' : 'outline'}
@@ -123,7 +123,7 @@ function SuggestedUserCard({ user }: { user: Profile }) {
         ) : (
           <>
             <UserPlus className="h-4 w-4 mr-1" />
-            Follow
+            Add
           </>
         )}
       </Button>

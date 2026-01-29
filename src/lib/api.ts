@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
-import type { Post, PostWithAuthor, Profile, Comment, CommentWithAuthor, Like } from '@/types/database';
+import type { Post, PostWithAuthor, Profile, Comment, CommentWithAuthor, Like, FriendRequestWithProfile } from '@/types/database';
 
 // Create a shared client instance
 const getSupabase = () => createClient();
@@ -21,15 +21,15 @@ export const postsApi = {
       return { posts: [], nextPage: undefined };
     }
 
-    // Get list of users the current user follows
-    const { data: following } = await supabase
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', user.id);
+    // Get list of users the current user is friends with
+    const { data: friends } = await supabase
+      .from('friendships')
+      .select('friend_id')
+      .eq('user_id', user.id);
 
-    // Create array of user IDs to show posts from (followed users + own posts)
-    const followingIds = (following as any[] | null)?.map(f => f.following_id) || [];
-    const userIds = [...followingIds, user.id];
+    // Create array of user IDs to show posts from (friends + own posts)
+    const friendIds = (friends as any[] | null)?.map(f => f.friend_id) || [];
+    const userIds = [...friendIds, user.id];
 
     const { data, error } = await supabase
       .from('posts')
@@ -275,40 +275,45 @@ export const profilesApi = {
 
     const profileData = data as any;
 
-    // Get follower and following counts
-    const [{ count: followersCount }, { count: followingCount }] = await Promise.all([
-      supabase
-        .from('follows')
-        .select('*', { count: 'exact', head: true })
-        .eq('following_id', profileData.id),
-      supabase
-        .from('follows')
-        .select('*', { count: 'exact', head: true })
-        .eq('follower_id', profileData.id),
-    ]);
+    // Get friends count (mutual friendships)
+    const { count: friendsCount } = await supabase
+      .from('friendships')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', profileData.id);
 
-    // Check if current user follows this profile
-    let isFollowing = false;
+    // Check if current user is friends with this profile
+    let isFriend = false;
     let hasPendingRequest = false;
+    let hasReceivedRequest = false;
     if (user && user.id !== profileData.id) {
-      const { data: follow } = await supabase
-        .from('follows')
+      const { data: friendship } = await supabase
+        .from('friendships')
         .select('id')
-        .eq('follower_id', user.id)
-        .eq('following_id', profileData.id)
+        .eq('user_id', user.id)
+        .eq('friend_id', profileData.id)
         .maybeSingle();
-      isFollowing = !!follow;
+      isFriend = !!friendship;
 
-      // Check for pending follow request
-      if (!isFollowing) {
-        const { data: request } = await supabase
-          .from('follow_requests')
+      // Check for pending friend request sent by current user
+      if (!isFriend) {
+        const { data: sentRequest } = await supabase
+          .from('friend_requests')
           .select('id')
           .eq('requester_id', user.id)
           .eq('target_id', profileData.id)
           .eq('status', 'pending')
           .maybeSingle();
-        hasPendingRequest = !!request;
+        hasPendingRequest = !!sentRequest;
+
+        // Check for pending friend request received from this user
+        const { data: receivedRequest } = await supabase
+          .from('friend_requests')
+          .select('id')
+          .eq('requester_id', profileData.id)
+          .eq('target_id', user.id)
+          .eq('status', 'pending')
+          .maybeSingle();
+        hasReceivedRequest = !!receivedRequest;
       }
     }
 
@@ -320,11 +325,11 @@ export const profilesApi = {
 
     return {
       ...profileData,
-      followersCount: followersCount || 0,
-      followingCount: followingCount || 0,
+      friendsCount: friendsCount || 0,
       postsCount: postsCount || 0,
-      isFollowing,
+      isFriend,
       hasPendingRequest,
+      hasReceivedRequest,
       isOwnProfile: user?.id === profileData.id,
     };
   },
@@ -363,17 +368,17 @@ export const profilesApi = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
-    // Get users that the current user is already following
-    const { data: following } = await supabase
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', user.id);
+    // Get users that the current user is already friends with
+    const { data: friends } = await supabase
+      .from('friendships')
+      .select('friend_id')
+      .eq('user_id', user.id);
 
-    const followingIds = (following || []).map((f:any) => f.following_id);
+    const friendIds = (friends || []).map((f:any) => f.friend_id);
     
-    // Get pending follow requests sent by the user
+    // Get pending friend requests sent by the user
     const { data: pendingRequests } = await supabase
-      .from('follow_requests')
+      .from('friend_requests')
       .select('target_id')
       .eq('requester_id', user.id)
       .eq('status', 'pending');
@@ -381,16 +386,16 @@ export const profilesApi = {
     const pendingRequestIds = (pendingRequests || []).map((r: any) => r.target_id);
     
     // Combine all IDs to exclude
-    const excludeIds = Array.from(new Set([...followingIds, ...pendingRequestIds, user.id]));
+    const excludeIds = Array.from(new Set([...friendIds, ...pendingRequestIds, user.id]));
 
-    // Get suggested users: newest users that aren't followed yet and don't have pending requests
+    // Get suggested users: newest users that aren't friends yet and don't have pending requests
     let query = supabase
       .from('profiles')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    // Exclude all IDs (current user, following, pending requests)
+    // Exclude all IDs (current user, friends, pending requests)
     if (excludeIds.length > 0) {
       query = query.not('id', 'in', `(${excludeIds.join(',')})`);
     }
@@ -405,9 +410,9 @@ export const profilesApi = {
   },
 };
 
-// Follows API
-export const followsApi = {
-  async followUser(userId: string) {
+// Friends API
+export const friendsApi = {
+  async addFriend(userId: string) {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
@@ -420,81 +425,65 @@ export const followsApi = {
       .single();
 
     if ((targetProfile as any)?.is_private) {
-      throw new Error('Cannot directly follow a private account. Send a follow request instead.');
+      throw new Error('Cannot directly add a private account. Send a friend request instead.');
     }
 
-    const { error } = await supabase
-      .from('follows')
-      .insert({ follower_id: user.id, following_id: userId } as any);
+    // Use the database function to create mutual friendship
+    const { error } = await supabase.rpc('add_friend_direct', { friend_user_id: userId });
 
-    if (error && error.code !== '23505') throw error;
+    if (error) throw error;
   },
 
-  async unfollowUser(userId: string) {
+  async removeFriend(userId: string) {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { error } = await supabase
-      .from('follows')
-      .delete()
-      .eq('follower_id', user.id)
-      .eq('following_id', userId);
+    // Use the database function to remove mutual friendship
+    const { error } = await supabase.rpc('remove_friend', { friend_user_id: userId });
 
     if (error) throw error;
   },
 
-  async getFollowers(userId: string) {
+  async getFriends(userId: string) {
     const supabase = getSupabase();
     const { data, error } = await supabase
-      .from('follows')
+      .from('friendships')
       .select(`
-        follower:profiles!follows_follower_id_fkey (*)
+        friend:profiles!friendships_friend_id_fkey (*)
       `)
-      .eq('following_id', userId);
+      .eq('user_id', userId);
 
     if (error) throw error;
-    return (data as any[])?.map((f: any) => f.follower) || [];
+    return (data as any[])?.map((f: any) => f.friend) || [];
   },
 
-  async getFollowing(userId: string) {
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from('follows')
-      .select(`
-        following:profiles!follows_following_id_fkey (*)
-      `)
-      .eq('follower_id', userId);
-
-    if (error) throw error;
-    return (data as any[])?.map((f: any) => f.following) || [];
-  },
-
-  async removeFollower(followerId: string) {
+  async areFriends(otherUserId: string): Promise<boolean> {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    if (!user) return false;
 
-    const { error } = await supabase
-      .from('follows')
-      .delete()
-      .eq('follower_id', followerId)
-      .eq('following_id', user.id);
+    const { data } = await supabase
+      .from('friendships')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('friend_id', otherUserId)
+      .maybeSingle();
 
-    if (error) throw error;
+    return !!data;
   },
 };
 
-// Follow Requests API
-export const followRequestsApi = {
-  async sendFollowRequest(targetUserId: string) {
+// Friend Requests API
+export const friendRequestsApi = {
+  async sendFriendRequest(targetUserId: string) {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Check if request already exists
     const { data: existingRequest } = await supabase
-      .from('follow_requests')
+      .from('friend_requests')
       .select('id, status')
       .eq('requester_id', user.id)
       .eq('target_id', targetUserId)
@@ -506,7 +495,7 @@ export const followRequestsApi = {
       // If there's a rejected or accepted request, delete it and create new one
       if (request.status === 'rejected' || request.status === 'accepted') {
         const { error: deleteError } = await supabase
-          .from('follow_requests')
+          .from('friend_requests')
           .delete()
           .eq('id', request.id);
         if (deleteError) throw deleteError;
@@ -518,19 +507,19 @@ export const followRequestsApi = {
     }
 
     const { error } = await supabase
-      .from('follow_requests')
+      .from('friend_requests')
       .insert({ requester_id: user.id, target_id: targetUserId } as any);
 
     if (error && error.code !== '23505') throw error;
   },
 
-  async cancelFollowRequest(targetUserId: string) {
+  async cancelFriendRequest(targetUserId: string) {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const { error } = await supabase
-      .from('follow_requests')
+      .from('friend_requests')
       .delete()
       .eq('requester_id', user.id)
       .eq('target_id', targetUserId);
@@ -538,36 +527,35 @@ export const followRequestsApi = {
     if (error) throw error;
   },
 
-  async acceptFollowRequest(requesterId: string) {
+  async acceptFriendRequest(requesterId: string) {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    // First create the follow relationship
-    const { error: followError } = await supabase
-      .from('follows')
-      .insert({ follower_id: requesterId, following_id: user.id } as any);
-
-    // Ignore duplicate key error (23505) - they might already be following
-    if (followError && followError.code !== '23505') throw followError;
-
-    // Then delete the follow request
-    const { error: deleteError } = await supabase
-      .from('follow_requests')
-      .delete()
+    // Get the request ID
+    const { data: request } = await supabase
+      .from('friend_requests')
+      .select('id')
       .eq('requester_id', requesterId)
-      .eq('target_id', user.id);
+      .eq('target_id', user.id)
+      .eq('status', 'pending')
+      .single();
 
-    if (deleteError) throw deleteError;
+    if (!request) throw new Error('Friend request not found');
+
+    // Use database function to accept and create mutual friendship
+    const { error } = await supabase.rpc('accept_friend_request', { request_id: request.id });
+
+    if (error) throw error;
   },
 
-  async rejectFollowRequest(requesterId: string) {
+  async rejectFriendRequest(requesterId: string) {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const { error } = await supabase
-      .from('follow_requests')
+      .from('friend_requests')
       .delete()
       .eq('requester_id', requesterId)
       .eq('target_id', user.id);
@@ -575,23 +563,23 @@ export const followRequestsApi = {
     if (error) throw error;
   },
 
-  async getPendingRequests() {
+  async getPendingRequests(): Promise<FriendRequestWithProfile[]> {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const { data, error } = await supabase
-      .from('follow_requests')
+      .from('friend_requests')
       .select(`
         *,
-        requester:profiles!follow_requests_requester_id_fkey (*)
+        requester:profiles!friend_requests_requester_id_fkey (*)
       `)
       .eq('target_id', user.id)
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    return (data || []) as FriendRequestWithProfile[];
   },
 
   async getSentRequests() {
@@ -600,7 +588,7 @@ export const followRequestsApi = {
     if (!user) throw new Error('Not authenticated');
 
     const { data, error } = await supabase
-      .from('follow_requests')
+      .from('friend_requests')
       .select('target_id')
       .eq('requester_id', user.id)
       .eq('status', 'pending');
@@ -609,10 +597,10 @@ export const followRequestsApi = {
     return (data as any[])?.map((r: any) => r.target_id) || [];
   },
 
-  async getFollowStatus(targetUserId: string) {
+  async getFriendshipStatus(targetUserId: string) {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { isFollowing: false, hasPendingRequest: false, isPrivate: false };
+    if (!user) return { isFriend: false, hasPendingRequest: false, hasReceivedRequest: false, isPrivate: false };
 
     // Get target user's privacy status
     const { data: targetProfile } = await supabase
@@ -621,26 +609,36 @@ export const followRequestsApi = {
       .eq('id', targetUserId)
       .single();
 
-    // Check if following
-    const { data: followData } = await supabase
-      .from('follows')
+    // Check if friends
+    const { data: friendshipData } = await supabase
+      .from('friendships')
       .select('id')
-      .eq('follower_id', user.id)
-      .eq('following_id', targetUserId)
+      .eq('user_id', user.id)
+      .eq('friend_id', targetUserId)
       .maybeSingle();
 
-    // Check if has pending request
-    const { data: requestData } = await supabase
-      .from('follow_requests')
+    // Check if has pending request sent
+    const { data: sentRequestData } = await supabase
+      .from('friend_requests')
       .select('id')
       .eq('requester_id', user.id)
       .eq('target_id', targetUserId)
       .eq('status', 'pending')
       .maybeSingle();
 
+    // Check if has received request
+    const { data: receivedRequestData } = await supabase
+      .from('friend_requests')
+      .select('id')
+      .eq('requester_id', targetUserId)
+      .eq('target_id', user.id)
+      .eq('status', 'pending')
+      .maybeSingle();
+
     return {
-      isFollowing: !!followData,
-      hasPendingRequest: !!requestData,
+      isFriend: !!friendshipData,
+      hasPendingRequest: !!sentRequestData,
+      hasReceivedRequest: !!receivedRequestData,
       isPrivate: !!(targetProfile as any)?.is_private,
     };
   },
@@ -874,18 +872,18 @@ export const realtimeApi = {
     };
   },
 
-  subscribeToFollowRequests(userId: string, callback: () => void) {
+  subscribeToFriendRequests(userId: string, callback: () => void) {
     const supabase = getSupabase();
     
-    // Subscribe to follow requests where user is the target (receiving requests)
+    // Subscribe to friend requests where user is the target (receiving requests)
     const channel = supabase
-      .channel('follow-requests-target')
+      .channel('friend-requests-target')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'follow_requests',
+          table: 'friend_requests',
           filter: `target_id=eq.${userId}`,
         },
         () => {
@@ -899,18 +897,18 @@ export const realtimeApi = {
     };
   },
 
-  subscribeToSentFollowRequests(userId: string, callback: () => void) {
+  subscribeToSentFriendRequests(userId: string, callback: () => void) {
     const supabase = getSupabase();
     
-    // Subscribe to follow requests where user is the requester (sent requests)
+    // Subscribe to friend requests where user is the requester (sent requests)
     const channel = supabase
-      .channel('follow-requests-sender')
+      .channel('friend-requests-sender')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'follow_requests',
+          table: 'friend_requests',
           filter: `requester_id=eq.${userId}`,
         },
         () => {
@@ -924,17 +922,17 @@ export const realtimeApi = {
     };
   },
 
-  subscribeToFollows(callback: () => void) {
+  subscribeToFriendships(callback: () => void) {
     const supabase = getSupabase();
     
     const channel = supabase
-      .channel('follows-changes')
+      .channel('friendships-changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'follows',
+          table: 'friendships',
         },
         () => {
           callback();

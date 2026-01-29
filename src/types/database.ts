@@ -17,6 +17,7 @@ export interface Database {
           bio: string | null
           avatar_url: string | null
           is_private: boolean
+          email: string | null
           created_at: string
           updated_at: string
         }
@@ -27,6 +28,7 @@ export interface Database {
           bio?: string | null
           avatar_url?: string | null
           is_private?: boolean
+          email?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -37,6 +39,7 @@ export interface Database {
           bio?: string | null
           avatar_url?: string | null
           is_private?: boolean
+          email?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -116,23 +119,49 @@ export interface Database {
           updated_at?: string
         }
       }
-      follows: {
+      friendships: {
         Row: {
           id: string
-          follower_id: string
-          following_id: string
+          user_id: string
+          friend_id: string
+          status: string
           created_at: string
         }
         Insert: {
           id?: string
-          follower_id: string
-          following_id: string
+          user_id: string
+          friend_id: string
+          status?: string
           created_at?: string
         }
         Update: {
           id?: string
-          follower_id?: string
-          following_id?: string
+          user_id?: string
+          friend_id?: string
+          status?: string
+          created_at?: string
+        }
+      }
+      friend_requests: {
+        Row: {
+          id: string
+          requester_id: string
+          target_id: string
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          requester_id: string
+          target_id: string
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          requester_id?: string
+          target_id?: string
+          status?: string
           created_at?: string
         }
       }
@@ -204,7 +233,7 @@ export interface Database {
           id: string
           user_id: string
           actor_id: string
-          type: 'like' | 'comment' | 'follow'
+          type: 'like' | 'comment' | 'follow' | 'friend_request' | 'friend_accept'
           post_id: string | null
           comment_id: string | null
           read: boolean
@@ -214,7 +243,7 @@ export interface Database {
           id?: string
           user_id: string
           actor_id: string
-          type: 'like' | 'comment' | 'follow'
+          type: 'like' | 'comment' | 'follow' | 'friend_request' | 'friend_accept'
           post_id?: string | null
           comment_id?: string | null
           read?: boolean
@@ -224,7 +253,7 @@ export interface Database {
           id?: string
           user_id?: string
           actor_id?: string
-          type?: 'like' | 'comment' | 'follow'
+          type?: 'like' | 'comment' | 'follow' | 'friend_request' | 'friend_accept'
           post_id?: string | null
           comment_id?: string | null
           read?: boolean
@@ -249,10 +278,16 @@ export type Profile = Database['public']['Tables']['profiles']['Row']
 export type Post = Database['public']['Tables']['posts']['Row']
 export type Like = Database['public']['Tables']['likes']['Row']
 export type Comment = Database['public']['Tables']['comments']['Row']
-export type Follow = Database['public']['Tables']['follows']['Row']
+export type Friendship = Database['public']['Tables']['friendships']['Row']
+export type FriendRequest = Database['public']['Tables']['friend_requests']['Row']
 export type Conversation = Database['public']['Tables']['conversations']['Row']
 export type Message = Database['public']['Tables']['messages']['Row']
 export type Notification = Database['public']['Tables']['notifications']['Row']
+
+// Friend request with requester profile
+export interface FriendRequestWithProfile extends FriendRequest {
+  requester: Profile
+}
 
 // Extended types with relations
 export interface PostWithAuthor extends Post {

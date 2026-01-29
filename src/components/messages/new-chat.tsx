@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, X, Loader2, MessageCircle } from 'lucide-react';
+import { Search, X, Loader2, MessageCircle, Users } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
-import { useSearchProfiles } from '@/hooks/queries';
+import { useFriends } from '@/hooks/queries';
 import { useStartConversation } from '@/hooks/use-messages';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Avatar } from '@/components/ui/avatar';
@@ -23,7 +23,8 @@ export function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedQuery = useDebounce(searchQuery, 300);
   
-  const { data: searchResults, isLoading: searchLoading } = useSearchProfiles(debouncedQuery);
+  // Only fetch friends instead of all users
+  const { data: friends, isLoading: friendsLoading } = useFriends(user?.id || '');
   const startConversation = useStartConversation();
 
   const handleStartChat = async (profile: Profile) => {
@@ -36,8 +37,15 @@ export function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
     }
   };
 
-  // Filter out current user from results
-  const filteredResults = searchResults?.filter((p: Profile) => p.id !== user?.id) || [];
+  // Filter friends based on search query
+  const filteredFriends = friends?.filter((p: Profile) => {
+    if (!debouncedQuery) return true;
+    const query = debouncedQuery.toLowerCase();
+    return (
+      p.username.toLowerCase().includes(query) ||
+      (p.full_name?.toLowerCase().includes(query) ?? false)
+    );
+  }) || [];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
@@ -57,7 +65,7 @@ export function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
             <Input
               type="text"
-              placeholder="Search for people..."
+              placeholder="Search friends..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -67,22 +75,23 @@ export function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
         </div>
 
         <div className="max-h-80 overflow-y-auto">
-          {searchQuery.length === 0 ? (
-            <div className="p-8 text-center text-neutral-500">
-              <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Search for someone to message</p>
-            </div>
-          ) : searchLoading ? (
+          {friendsLoading ? (
             <div className="p-8 text-center">
               <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary-500" />
             </div>
-          ) : filteredResults.length === 0 ? (
+          ) : !friends || friends.length === 0 ? (
             <div className="p-8 text-center text-neutral-500">
-              <p>No users found</p>
+              <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>Add friends to start messaging</p>
+              <p className="text-sm mt-1">You can only message people who are your friends</p>
+            </div>
+          ) : filteredFriends.length === 0 ? (
+            <div className="p-8 text-center text-neutral-500">
+              <p>No friends match your search</p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {filteredResults.map((profile: Profile) => (
+              {filteredFriends.map((profile: Profile) => (
                 <button
                   key={profile.id}
                   onClick={() => handleStartChat(profile)}

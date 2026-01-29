@@ -290,13 +290,15 @@ export function ActiveCall({
 
         case 'call-end':
         case 'call-reject':
-          handleEndCall();
+          // Call ended by other user, just cleanup locally without sending signal back
+          cleanup();
+          onEndCall();
           break;
       }
     } catch (error) {
       console.error('Error handling signal:', error);
     }
-  }, [otherUser.id, flushIceCandidates]);
+  }, [otherUser.id, flushIceCandidates, onEndCall]);
 
   // Initialize call and subscribe to signals
   useEffect(() => {
@@ -317,7 +319,8 @@ export function ActiveCall({
     peerConnection.current = null;
   };
 
-  const handleEndCall = async () => {
+  // When user clicks end call button
+  const handleUserEndCall = async () => {
     try {
       await callApi.sendSignal(otherUser.id, 'call-end', {});
     } catch (error) {
@@ -448,7 +451,7 @@ export function ActiveCall({
         )}
 
         <button
-          onClick={handleEndCall}
+          onClick={handleUserEndCall}
           className="p-4 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
         >
           <PhoneOff className="h-6 w-6" />

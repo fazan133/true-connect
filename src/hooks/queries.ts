@@ -5,7 +5,7 @@ import {
   useInfiniteQuery,
 } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { postsApi, likesApi, commentsApi, profilesApi, followsApi, followRequestsApi, storageApi, notificationsApi, realtimeApi } from '@/lib/api';
+import { postsApi, likesApi, commentsApi, profilesApi, friendsApi, friendRequestsApi, storageApi, notificationsApi, realtimeApi } from '@/lib/api';
 import type { PostWithAuthor } from '@/types/database';
 import toast from 'react-hot-toast';
 
@@ -16,12 +16,11 @@ export const queryKeys = {
   userPosts: (userId: string) => ['userPosts', userId] as const,
   comments: (postId: string) => ['comments', postId] as const,
   profile: (username: string) => ['profile', username] as const,
-  followers: (userId: string) => ['followers', userId] as const,
-  following: (userId: string) => ['following', userId] as const,
+  friends: (userId: string) => ['friends', userId] as const,
   searchProfiles: (query: string) => ['searchProfiles', query] as const,
   notifications: ['notifications'] as const,
   unreadNotificationCount: ['unreadNotificationCount'] as const,
-  pendingFollowRequests: ['pendingFollowRequests'] as const,
+  pendingFriendRequests: ['pendingFriendRequests'] as const,
 };
 
 // Feed hooks
@@ -241,84 +240,62 @@ export function useSuggestedUsers(limit: number = 5) {
   });
 }
 
-// Follow hooks
-export function useFollowUser() {
+// Friend hooks
+export function useAddFriend() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: followsApi.followUser,
+    mutationFn: friendsApi.addFriend,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.feed });
-      toast.success('Following!');
+      queryClient.invalidateQueries({ queryKey: ['friends'] });
+      toast.success('Friend added!');
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to follow');
+      toast.error(error.message || 'Failed to add friend');
     },
   });
 }
 
-export function useUnfollowUser() {
+export function useRemoveFriend() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: followsApi.unfollowUser,
+    mutationFn: friendsApi.removeFriend,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.feed });
-      toast.success('Unfollowed');
+      queryClient.invalidateQueries({ queryKey: ['friends'] });
+      toast.success('Friend removed');
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to unfollow');
+      toast.error(error.message || 'Failed to remove friend');
     },
   });
 }
 
-export function useFollowers(userId: string) {
+export function useFriends(userId: string) {
   return useQuery({
-    queryKey: queryKeys.followers(userId),
-    queryFn: () => followsApi.getFollowers(userId),
+    queryKey: queryKeys.friends(userId),
+    queryFn: () => friendsApi.getFriends(userId),
     enabled: !!userId,
   });
 }
 
-export function useFollowing(userId: string) {
-  return useQuery({
-    queryKey: queryKeys.following(userId),
-    queryFn: () => followsApi.getFollowing(userId),
-    enabled: !!userId,
-  });
-}
-
-export function useRemoveFollower() {
+// Friend Request hooks
+export function useSendFriendRequest() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: followsApi.removeFollower,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
-      queryClient.invalidateQueries({ queryKey: ['followers'] });
-      toast.success('Follower removed');
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to remove follower');
-    },
-  });
-}
-
-// Follow Request hooks
-export function useSendFollowRequest() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: followRequestsApi.sendFollowRequest,
+    mutationFn: friendRequestsApi.sendFriendRequest,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFollowRequests });
-      toast.success('Follow request sent!');
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFriendRequests });
+      toast.success('Friend request sent!');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to send request');
@@ -326,15 +303,15 @@ export function useSendFollowRequest() {
   });
 }
 
-export function useCancelFollowRequest() {
+export function useCancelFriendRequest() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: followRequestsApi.cancelFollowRequest,
+    mutationFn: friendRequestsApi.cancelFriendRequest,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFollowRequests });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFriendRequests });
       toast.success('Request cancelled');
     },
     onError: (error: Error) => {
@@ -343,17 +320,17 @@ export function useCancelFollowRequest() {
   });
 }
 
-export function useAcceptFollowRequest() {
+export function useAcceptFriendRequest() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: followRequestsApi.acceptFollowRequest,
+    mutationFn: friendRequestsApi.acceptFriendRequest,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFollowRequests });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFriendRequests });
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       queryClient.invalidateQueries({ queryKey: ['profile'] });
-      queryClient.invalidateQueries({ queryKey: ['followers'] });
-      toast.success('Follow request accepted!');
+      queryClient.invalidateQueries({ queryKey: ['friends'] });
+      toast.success('Friend request accepted!');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to accept request');
@@ -361,15 +338,15 @@ export function useAcceptFollowRequest() {
   });
 }
 
-export function useRejectFollowRequest() {
+export function useRejectFriendRequest() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: followRequestsApi.rejectFollowRequest,
+    mutationFn: friendRequestsApi.rejectFriendRequest,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFollowRequests });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFriendRequests });
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-      toast.success('Follow request rejected');
+      toast.success('Friend request rejected');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to reject request');
@@ -377,10 +354,10 @@ export function useRejectFollowRequest() {
   });
 }
 
-export function usePendingFollowRequests() {
+export function usePendingFriendRequests() {
   return useQuery({
-    queryKey: queryKeys.pendingFollowRequests,
-    queryFn: followRequestsApi.getPendingRequests,
+    queryKey: queryKeys.pendingFriendRequests,
+    queryFn: friendRequestsApi.getPendingRequests,
   });
 }
 
@@ -539,46 +516,49 @@ export function useRealtimeNotifications(userId: string | undefined) {
   }, [userId, queryClient]);
 }
 
-export function useRealtimeFollowRequests(userId: string | undefined) {
+export function useRealtimeFriendRequests(userId: string | undefined) {
   const queryClient = useQueryClient();
-  const followRequestsQuery = usePendingFollowRequests();
+  const friendRequestsQuery = usePendingFriendRequests();
 
   useEffect(() => {
     if (!userId) return;
 
-    const unsubscribe = realtimeApi.subscribeToFollowRequests(userId, () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFollowRequests });
+    const unsubscribe = realtimeApi.subscribeToFriendRequests(userId, () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingFriendRequests });
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      toast('You have a new friend request!', { icon: '👋' });
     });
 
     return unsubscribe;
   }, [userId, queryClient]);
 
-  return followRequestsQuery;
+  return friendRequestsQuery;
 }
 
-// Real-time hook for follows (to update profiles, suggested users, etc.)
-export function useRealtimeFollows(userId?: string) {
+// Real-time hook for friendships (to update profiles, suggested users, etc.)
+export function useRealtimeFriendships(userId?: string) {
   const queryClient = useQueryClient();
 
-  // Subscribe to follows table changes
+  // Subscribe to friendships table changes
   useEffect(() => {
-    const unsubscribe = realtimeApi.subscribeToFollows(() => {
+    const unsubscribe = realtimeApi.subscribeToFriendships(() => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['friends'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.feed });
     });
 
     return unsubscribe;
   }, [queryClient]);
 
-  // Subscribe to sent follow requests (for the sender to know when their request is accepted/rejected)
+  // Subscribe to sent friend requests (for the sender to know when their request is accepted/rejected)
   useEffect(() => {
     if (!userId) return;
 
-    const unsubscribe = realtimeApi.subscribeToSentFollowRequests(userId, () => {
+    const unsubscribe = realtimeApi.subscribeToSentFriendRequests(userId, () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       queryClient.invalidateQueries({ queryKey: ['suggestedUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['friends'] });
     });
 
     return unsubscribe;

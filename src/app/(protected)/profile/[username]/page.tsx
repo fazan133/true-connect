@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Settings, MessageCircle, Calendar, ArrowLeft, Loader2, Lock } from 'lucide-react';
+import { Settings, MessageCircle, Calendar, ArrowLeft, Loader2, Lock, Mail, UserPlus, UserMinus, Clock, Check } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
-import { useProfile, useUserPosts, useFollowUser, useUnfollowUser, useSendFollowRequest, useCancelFollowRequest, useRealtimeFollows } from '@/hooks/queries';
+import { useProfile, useUserPosts, useAddFriend, useRemoveFriend, useSendFriendRequest, useCancelFriendRequest, useAcceptFriendRequest, useRealtimeFriendships } from '@/hooks/queries';
 import { useStartConversation } from '@/hooks/use-messages';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Avatar } from '@/components/ui/avatar';
@@ -15,7 +15,7 @@ import { PostCard } from '@/components/posts/post-card';
 import { ProfileSkeleton, PostSkeleton } from '@/components/ui/skeleton';
 import { Modal } from '@/components/ui/modal';
 import { EditProfileForm } from '@/components/profile/edit-profile-form';
-import { FollowStats } from '@/components/profile/follow-list';
+import { FriendsList } from '@/components/profile/follow-list';
 import { SuggestedUsers } from '@/components/profile/suggested-users';
 
 export default function ProfilePage() {
@@ -29,28 +29,31 @@ export default function ProfilePage() {
   const { data: profile, isLoading: profileLoading } = useProfile(username);
   const { data: postsData, isLoading: postsLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useUserPosts(profile?.id || '');
 
-  // Enable real-time updates for follows
-  useRealtimeFollows(user?.id);
+  // Enable real-time updates for friendships
+  useRealtimeFriendships(user?.id);
 
-  const followUser = useFollowUser();
-  const unfollowUser = useUnfollowUser();
-  const sendFollowRequest = useSendFollowRequest();
-  const cancelFollowRequest = useCancelFollowRequest();
+  const addFriend = useAddFriend();
+  const removeFriend = useRemoveFriend();
+  const sendFriendRequest = useSendFriendRequest();
+  const cancelFriendRequest = useCancelFriendRequest();
+  const acceptFriendRequest = useAcceptFriendRequest();
   const startConversation = useStartConversation();
 
-  const handleFollowToggle = () => {
+  const handleFriendAction = () => {
     if (!profile) return;
     
-    if (profile.isFollowing) {
-      unfollowUser.mutate(profile.id);
+    if (profile.isFriend) {
+      removeFriend.mutate(profile.id);
     } else if (profile.hasPendingRequest) {
-      cancelFollowRequest.mutate(profile.id);
+      cancelFriendRequest.mutate(profile.id);
+    } else if (profile.hasReceivedRequest) {
+      acceptFriendRequest.mutate(profile.id);
     } else if (profile.is_private) {
-      // Send follow request for private accounts
-      sendFollowRequest.mutate(profile.id);
+      // Send friend request for private accounts
+      sendFriendRequest.mutate(profile.id);
     } else {
-      // Direct follow for public accounts
-      followUser.mutate(profile.id);
+      // Direct add for public accounts
+      addFriend.mutate(profile.id);
     }
   };
 
@@ -60,17 +63,26 @@ export default function ProfilePage() {
     router.push(`/messages/${conversationId}`);
   };
 
-  const getFollowButtonText = () => {
-    if (!profile) return 'Follow';
-    if (profile.isFollowing) return 'Following';
+  const getFriendButtonText = () => {
+    if (!profile) return 'Add Friend';
+    if (profile.isFriend) return 'Friends';
     if (profile.hasPendingRequest) return 'Requested';
-    return 'Follow';
+    if (profile.hasReceivedRequest) return 'Accept';
+    return 'Add Friend';
   };
 
-  const isFollowLoading = followUser.isPending || unfollowUser.isPending || sendFollowRequest.isPending || cancelFollowRequest.isPending;
+  const getFriendButtonIcon = () => {
+    if (!profile) return <UserPlus className="h-4 w-4 mr-2" />;
+    if (profile.isFriend) return <Check className="h-4 w-4 mr-2" />;
+    if (profile.hasPendingRequest) return <Clock className="h-4 w-4 mr-2" />;
+    if (profile.hasReceivedRequest) return <Check className="h-4 w-4 mr-2" />;
+    return <UserPlus className="h-4 w-4 mr-2" />;
+  };
 
-  // Check if we can see posts (own profile, following, or public account)
-  const canSeePosts = profile?.isOwnProfile || profile?.isFollowing || !profile?.is_private;
+  const isFriendLoading = addFriend.isPending || removeFriend.isPending || sendFriendRequest.isPending || cancelFriendRequest.isPending || acceptFriendRequest.isPending;
+
+  // Check if we can see posts (own profile, friend, or public account)
+  const canSeePosts = profile?.isOwnProfile || profile?.isFriend || !profile?.is_private;
 
   if (profileLoading) {
     return (
@@ -137,23 +149,28 @@ export default function ProfilePage() {
               ) : (
                 <div className="flex gap-2">
                   <Button
-                    variant={profile.isFollowing ? 'outline' : profile.hasPendingRequest ? 'outline' : 'primary'}
-                    onClick={handleFollowToggle}
-                    disabled={isFollowLoading}
+                    variant={profile.isFriend ? 'outline' : profile.hasPendingRequest ? 'outline' : 'primary'}
+                    onClick={handleFriendAction}
+                    disabled={isFriendLoading}
                   >
-                    {isFollowLoading ? (
+                    {isFriendLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      getFollowButtonText()
+                      <>
+                        {getFriendButtonIcon()}
+                        {getFriendButtonText()}
+                      </>
                     )}
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleMessage}
-                    disabled={startConversation.isPending}
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                  </Button>
+                  {profile.isFriend && (
+                    <Button
+                      variant="outline"
+                      onClick={handleMessage}
+                      disabled={startConversation.isPending}
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -172,6 +189,12 @@ export default function ProfilePage() {
               <Calendar className="h-4 w-4" />
               Joined {formatDate(profile.created_at)}
             </div>
+            {profile.email && (profile.isOwnProfile || profile.isFriend) && (
+              <div className="flex items-center gap-1 text-neutral-500">
+                <Mail className="h-4 w-4" />
+                {profile.email}
+              </div>
+            )}
           </div>
 
           <div className="flex gap-6 mt-4">
@@ -179,11 +202,10 @@ export default function ProfilePage() {
               <span className="font-bold">{profile.postsCount}</span>{' '}
               <span className="text-neutral-500">posts</span>
             </div>
-            <FollowStats
+            <FriendsList
               userId={profile.id}
               username={profile.username}
-              followersCount={profile.followersCount}
-              followingCount={profile.followingCount}
+              friendsCount={profile.friendsCount}
               isOwnProfile={profile.isOwnProfile}
             />
           </div>
@@ -199,7 +221,7 @@ export default function ProfilePage() {
             <Lock className="h-12 w-12 mx-auto text-neutral-300 dark:text-neutral-700 mb-4" />
             <h3 className="text-lg font-semibold mb-2">This account is private</h3>
             <p className="text-neutral-500">
-              Follow this account to see their posts.
+              Add this person as a friend to see their posts.
             </p>
           </div>
         ) : postsLoading ? (
