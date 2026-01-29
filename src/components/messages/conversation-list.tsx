@@ -109,7 +109,7 @@ export function ConversationList({ activeConversationId }: ConversationListProps
             </Link>
             <button
               onClick={(e) => handleDeleteClick(e, conversation.id)}
-              className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-all"
+              className="p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-500 transition-all"
               title="Delete conversation"
             >
               <Trash2 className="h-4 w-4" />
