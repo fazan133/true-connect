@@ -4,6 +4,52 @@ import type { ConversationWithDetails, MessageWithSender } from '@/types/databas
 // Helper to get fresh Supabase client
 const getSupabase = () => createClient();
 
+// Compress image before upload
+async function compressImage(file: File, maxWidth: number = 1200, quality: number = 0.8): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        
+        // Calculate new dimensions
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Could not compress image'));
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => reject(new Error('Could not load image'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export const messagesApi = {
   async getConversations() {
     const supabase = getSupabase();
@@ -134,6 +180,102 @@ export const messagesApi = {
       .is('read_at', null);
 
     if (error) throw error;
+  },
+
+  async deleteConversation(conversationId: string) {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    // First, get all messages with images to delete from storage
+    const { data: messages } = await supabase
+      .from('messages')
+      .select('image_url')
+      .eq('conversation_id', conversationId)
+      .not('image_url', 'is', null);
+
+    // Delete images from storage
+    if (messages && messages.length > 0) {
+      const imagePaths = messages
+        .filter((m: any) => m.image_url)
+        .map((m: any) => {
+          // Extract path from URL
+          const url = m.image_url;
+          const match = url.match(/chat-images\/(.+)$/);
+          return match ? match[1] : null;
+        })
+        .filter(Boolean);
+
+      if (imagePaths.length > 0) {
+        await supabase.storage.from('chat-images').remove(imagePaths);
+      }
+    }
+
+    // Delete messages
+    await supabase
+      .from('messages')
+      .delete()
+      .eq('conversation_id', conversationId);
+
+    // Delete conversation participants
+    await supabase
+      .from('conversation_participants')
+      .delete()
+      .eq('conversation_id', conversationId);
+
+    // Delete conversation
+    const { error } = await supabase
+      .from('conversations')
+      .delete()
+      .eq('id', conversationId);
+
+    if (error) throw error;
+  },
+
+  async sendImageMessage(conversationId: string, file: File) {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    // Compress the image
+    const compressedImage = await compressImage(file);
+    
+    // Generate unique filename
+    const fileExt = 'jpg'; // Always save as jpg after compression
+    const fileName = `${conversationId}/${user.id}-${Date.now()}.${fileExt}`;
+
+    // Upload to storage
+    const { error: uploadError } = await supabase.storage
+      .from('chat-images')
+      .upload(fileName, compressedImage, {
+        contentType: 'image/jpeg',
+        cacheControl: '3600',
+      });
+
+    if (uploadError) throw uploadError;
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('chat-images')
+      .getPublicUrl(fileName);
+
+    // Create message with image
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_id: user.id,
+        content: '📷 Image',
+        image_url: publicUrl,
+      } as any)
+      .select(`
+        *,
+        profiles (*)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data as MessageWithSender;
   },
 
   async getTotalUnreadCount() {

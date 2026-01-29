@@ -288,17 +288,13 @@ export function ActiveCall({
           }
           break;
 
-        case 'call-end':
-        case 'call-reject':
-          // Call ended by other user, just cleanup locally without sending signal back
-          cleanup();
-          onEndCall();
-          break;
+        // call-end and call-reject are handled by CallProvider
+        // We don't need to handle them here to avoid duplicate cleanup
       }
     } catch (error) {
       console.error('Error handling signal:', error);
     }
-  }, [otherUser.id, flushIceCandidates, onEndCall]);
+  }, [otherUser.id, flushIceCandidates]);
 
   // Initialize call and subscribe to signals
   useEffect(() => {

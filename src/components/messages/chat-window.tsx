@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Send, Loader2, ArrowLeft } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Image as ImageIcon, X } from 'lucide-react';
+import Image from 'next/image';
 import { cn, formatRelativeTime } from '@/lib/utils';
-import { useMessages, useSendMessage, useMarkAsRead, messageQueryKeys } from '@/hooks/use-messages';
+import { useMessages, useSendMessage, useMarkAsRead, useSendImageMessage, messageQueryKeys } from '@/hooks/use-messages';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Avatar } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
@@ -22,12 +23,16 @@ interface ChatWindowProps {
 export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
   const { user } = useAuth();
   const [message, setMessage] = useState('');
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { startCall } = useCall();
 
   const { data: messages, isLoading } = useMessages(conversationId);
   const sendMessage = useSendMessage();
+  const sendImageMessage = useSendImageMessage();
   const markAsRead = useMarkAsRead();
 
   // Scroll to bottom on new messages
@@ -71,15 +76,48 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
     };
   }, [conversationId, queryClient]);
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        alert('Image must be less than 10MB');
+        return;
+      }
+      setSelectedImage(file);
+      const reader = new FileReader();
+      reader.onload = (e) => setImagePreview(e.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const clearSelectedImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
-
-    await sendMessage.mutateAsync({
-      conversationId,
-      content: message.trim(),
-    });
-    setMessage('');
+    
+    // Send image if selected
+    if (selectedImage) {
+      await sendImageMessage.mutateAsync({
+        conversationId,
+        file: selectedImage,
+      });
+      clearSelectedImage();
+    }
+    
+    // Send text message if present
+    if (message.trim()) {
+      await sendMessage.mutateAsync({
+        conversationId,
+        content: message.trim(),
+      });
+      setMessage('');
+    }
   };
 
   return (
@@ -145,17 +183,35 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
                 {!isOwn && !showAvatar && <div className="w-8" />}
                 <div
                   className={cn(
-                    'max-w-[70%] px-4 py-2 rounded-2xl animate-slide-up',
+                    'max-w-[70%] rounded-2xl animate-slide-up overflow-hidden',
                     isOwn
                       ? 'bg-primary-500 text-white rounded-br-md'
-                      : 'bg-neutral-100 dark:bg-neutral-800 rounded-bl-md'
+                      : 'bg-neutral-100 dark:bg-neutral-800 rounded-bl-md',
+                    (msg as any).image_url ? 'p-1' : 'px-4 py-2'
                   )}
                 >
-                  <p className="break-words">{msg.content}</p>
+                  {(msg as any).image_url && (
+                    <a 
+                      href={(msg as any).image_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <img 
+                        src={(msg as any).image_url} 
+                        alt="Shared image" 
+                        className="max-w-full rounded-xl max-h-64 object-cover"
+                      />
+                    </a>
+                  )}
+                  {!(msg as any).image_url && (
+                    <p className="break-words">{msg.content}</p>
+                  )}
                   <p
                     className={cn(
                       'text-xs mt-1',
-                      isOwn ? 'text-primary-100' : 'text-neutral-500'
+                      isOwn ? 'text-primary-100' : 'text-neutral-500',
+                      (msg as any).image_url && 'px-2 pb-1'
                     )}
                   >
                     {formatRelativeTime(msg.created_at)}
@@ -173,12 +229,46 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Image Preview */}
+      {imagePreview && (
+        <div className="px-4 py-2 border-t border-neutral-200 dark:border-neutral-800">
+          <div className="relative inline-block">
+            <img 
+              src={imagePreview} 
+              alt="Preview" 
+              className="h-20 w-20 object-cover rounded-lg"
+            />
+            <button
+              type="button"
+              onClick={clearSelectedImage}
+              className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Input */}
       <form
         onSubmit={handleSend}
         className="p-4 border-t border-neutral-200 dark:border-neutral-800 pb-20 lg:pb-4"
       >
         <div className="flex items-center gap-2">
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            onChange={handleImageSelect}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          >
+            <ImageIcon className="h-5 w-5 text-neutral-500" />
+          </button>
           <Input
             placeholder="Type a message..."
             value={message}
@@ -187,7 +277,7 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
           />
           <button
             type="submit"
-            disabled={!message.trim() || sendMessage.isPending}
+            disabled={(!message.trim() && !selectedImage) || sendMessage.isPending || sendImageMessage.isPending}
             className="p-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {sendMessage.isPending ? (

@@ -80,6 +80,40 @@ export function useUnreadMessageCount() {
   });
 }
 
+export function useDeleteConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: messagesApi.deleteConversation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: messageQueryKeys.conversations });
+      toast.success('Conversation deleted');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete conversation');
+    },
+  });
+}
+
+export function useSendImageMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ conversationId, file }: { conversationId: string; file: File }) =>
+      messagesApi.sendImageMessage(conversationId, file),
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(
+        messageQueryKeys.messages(variables.conversationId),
+        (old: any) => (old ? [...old, data] : [data])
+      );
+      queryClient.invalidateQueries({ queryKey: messageQueryKeys.conversations });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to send image');
+    },
+  });
+}
+
 // Real-time hook for all messages (for unread count badge)
 export function useRealtimeUnreadMessages(userId: string | undefined) {
   const queryClient = useQueryClient();

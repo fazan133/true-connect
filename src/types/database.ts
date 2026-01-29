@@ -208,6 +208,7 @@ export interface Database {
           conversation_id: string
           sender_id: string
           content: string
+          image_url: string | null
           read_at: string | null
           created_at: string
         }
@@ -216,6 +217,7 @@ export interface Database {
           conversation_id: string
           sender_id: string
           content: string
+          image_url?: string | null
           read_at?: string | null
           created_at?: string
         }
@@ -224,6 +226,7 @@ export interface Database {
           conversation_id?: string
           sender_id?: string
           content?: string
+          image_url?: string | null
           read_at?: string | null
           created_at?: string
         }

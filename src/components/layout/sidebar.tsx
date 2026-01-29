@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, MessageCircle, User, Settings, PlusSquare, LogOut, Search } from 'lucide-react';
+import { Home, MessageCircle, User, Settings, LogOut, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Avatar } from '@/components/ui/avatar';
@@ -11,7 +11,6 @@ import { useUnreadMessageCount, useRealtimeUnreadMessages } from '@/hooks/use-me
 const navItems = [
   { href: '/feed', icon: Home, label: 'Home' },
   { href: '/search', icon: Search, label: 'Search' },
-  { href: '/create', icon: PlusSquare, label: 'Create' },
   { href: '/messages', icon: MessageCircle, label: 'Messages', showBadge: true },
 ];
 
@@ -117,8 +116,8 @@ export function Sidebar() {
       </aside>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 px-2 py-2 z-40 safe-area-bottom">
-        <div className="flex items-center justify-around">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 px-4 z-40 safe-area-bottom">
+        <div className="flex items-center justify-around h-16">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const showMessageBadge = item.showBadge && unreadMessageCount > 0;
@@ -127,16 +126,16 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex flex-col items-center gap-1 p-2 rounded-lg transition-colors relative',
+                  'flex flex-col items-center justify-center gap-1 p-3 rounded-lg transition-colors relative min-w-[60px]',
                   isActive
                     ? 'text-primary-500'
                     : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
                 )}
               >
                 <div className="relative">
-                  <item.icon className="h-6 w-6" />
+                  <item.icon className="h-7 w-7" />
                   {showMessageBadge && (
-                    <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-medium">
+                    <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
                       {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
                     </span>
                   )}
@@ -147,18 +146,18 @@ export function Sidebar() {
           <Link
             href="/settings"
             className={cn(
-              'flex flex-col items-center gap-1 p-2 rounded-lg transition-colors',
+              'flex flex-col items-center justify-center gap-1 p-3 rounded-lg transition-colors min-w-[60px]',
               pathname === '/settings'
                 ? 'text-primary-500'
                 : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
             )}
           >
-            <Settings className="h-6 w-6" />
+            <Settings className="h-7 w-7" />
           </Link>
           <Link
             href={`/profile/${profile?.username}`}
             className={cn(
-              'flex flex-col items-center gap-1 p-2 rounded-lg transition-colors',
+              'flex flex-col items-center justify-center gap-1 p-3 rounded-lg transition-colors min-w-[60px]',
               pathname.startsWith('/profile')
                 ? 'text-primary-500'
                 : 'text-neutral-500'
@@ -167,7 +166,7 @@ export function Sidebar() {
             <Avatar
               src={profile?.avatar_url}
               alt={profile?.username || 'User'}
-              size="xs"
+              size="sm"
             />
           </Link>
         </div>
