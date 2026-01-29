@@ -372,4 +372,39 @@ export const messagesApi = {
       }
     };
   },
+
+  subscribeToReadReceipts(conversationId: string, callback: (messageId: string, readAt: string) => void) {
+    const supabase = getSupabase();
+    
+    const channel = supabase
+      .channel(`read-receipts-${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          // Only trigger if read_at was updated (was null, now has value)
+          const newReadAt = (payload.new as any)?.read_at;
+          const oldReadAt = (payload.old as any)?.read_at;
+          
+          if (newReadAt && !oldReadAt) {
+            callback((payload.new as any).id, newReadAt);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Read receipts subscription status:', status);
+      });
+
+    return {
+      unsubscribe: () => {
+        console.log('Unsubscribing from read receipts channel');
+        supabase.removeChannel(channel);
+      }
+    };
+  },
 };

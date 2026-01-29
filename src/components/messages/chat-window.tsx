@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Send, Loader2, ArrowLeft, Image as ImageIcon, X } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Image as ImageIcon, X, Check, CheckCheck } from 'lucide-react';
 import Image from 'next/image';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { useMessages, useSendMessage, useMarkAsRead, useSendImageMessage, messageQueryKeys } from '@/hooks/use-messages';
@@ -40,21 +40,51 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Mark messages as read when viewing
+  // Mark messages as read when viewing (only when window is visible)
   useEffect(() => {
-    if (conversationId) {
-      markAsRead.mutate(conversationId);
-    }
+    if (!conversationId) return;
+    
+    // Mark as read immediately if document is visible
+    const markMessagesAsRead = () => {
+      if (document.visibilityState === 'visible') {
+        markAsRead.mutate(conversationId);
+      }
+    };
+    
+    // Mark as read on initial load if visible
+    markMessagesAsRead();
+    
+    // Mark as read when tab becomes visible
+    const handleVisibilityChange = () => markMessagesAsRead();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
-  // Subscribe to real-time messages
+  // Mark new messages as read when they arrive (if window is visible)
+  useEffect(() => {
+    if (!conversationId || !messages?.length) return;
+    
+    const hasUnreadFromOthers = messages.some(
+      (m) => m.sender_id !== user?.id && !(m as any).read_at
+    );
+    
+    if (hasUnreadFromOthers && document.visibilityState === 'visible') {
+      markAsRead.mutate(conversationId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
+
+  // Subscribe to real-time messages and read receipts
   useEffect(() => {
     if (!conversationId) return;
     
     console.log('Setting up message subscription for:', conversationId);
     
-    const subscription = messagesApi.subscribeToMessages(
+    const messageSubscription = messagesApi.subscribeToMessages(
       conversationId,
       (newMessage: MessageWithSender) => {
         console.log('Received new message in component:', newMessage);
@@ -69,10 +99,27 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
         );
       }
     );
+    
+    // Subscribe to read receipt updates
+    const readReceiptSubscription = messagesApi.subscribeToReadReceipts(
+      conversationId,
+      (messageId: string, readAt: string) => {
+        queryClient.setQueryData(
+          messageQueryKeys.messages(conversationId),
+          (old: MessageWithSender[] | undefined) => {
+            if (!old) return old;
+            return old.map((m) =>
+              m.id === messageId ? { ...m, read_at: readAt } : m
+            );
+          }
+        );
+      }
+    );
 
     return () => {
       console.log('Cleaning up message subscription for:', conversationId);
-      subscription.unsubscribe();
+      messageSubscription.unsubscribe();
+      readReceiptSubscription.unsubscribe();
     };
   }, [conversationId, queryClient]);
 
@@ -207,15 +254,29 @@ export function ChatWindow({ conversationId, otherUser }: ChatWindowProps) {
                   {!(msg as any).image_url && (
                     <p className="break-words">{msg.content}</p>
                   )}
-                  <p
+                  <div
                     className={cn(
-                      'text-xs mt-1',
-                      isOwn ? 'text-primary-100' : 'text-neutral-500',
+                      'flex items-center gap-1 mt-1',
+                      isOwn ? 'justify-end' : '',
                       (msg as any).image_url && 'px-2 pb-1'
                     )}
                   >
-                    {formatRelativeTime(msg.created_at)}
-                  </p>
+                    <span
+                      className={cn(
+                        'text-xs',
+                        isOwn ? 'text-primary-100' : 'text-neutral-500'
+                      )}
+                    >
+                      {formatRelativeTime(msg.created_at)}
+                    </span>
+                    {isOwn && (
+                      (msg as any).read_at ? (
+                        <CheckCheck className="h-4 w-4 text-primary-100" />
+                      ) : (
+                        <Check className="h-4 w-4 text-primary-200" />
+                      )
+                    )}
+                  </div>
                 </div>
               </div>
             );
