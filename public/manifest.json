@@ -1,7 +1,7 @@
 {
-  "name": "True-Connect",
-  "short_name": "True-Connect",
-  "description": "Connect with friends and share moments on True-Connect",
+  "name": "TrueConnect",
+  "short_name": "TrueConnect",
+  "description": "Connect with friends and share moments on TrueConnect",
   "start_url": "/feed",
   "display": "standalone",
   "background_color": "#ffffff",

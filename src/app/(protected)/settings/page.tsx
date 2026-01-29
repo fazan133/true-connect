@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Moon, Sun, LogOut, User, Bell, Shield, Loader2, Lock } from 'lucide-react';
+import { Moon, Sun, LogOut, User, Bell, Shield, Loader2, Lock, EyeOff } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/auth/auth-provider';
 import { useUpdateProfile, useRealtimeFriendRequests, useAcceptFriendRequest, useRejectFriendRequest } from '@/hooks/queries';
@@ -24,6 +24,11 @@ export default function SettingsPage() {
 
   const handleTogglePrivate = async () => {
     await updateProfile.mutateAsync({ is_private: !profile?.is_private });
+    refreshProfile?.();
+  };
+
+  const handleToggleDiscoverable = async () => {
+    await updateProfile.mutateAsync({ is_discoverable: !(profile?.is_discoverable !== false) });
     refreshProfile?.();
   };
 
@@ -134,7 +139,7 @@ export default function SettingsPage() {
                 Private Account
               </p>
               <p className="text-sm text-neutral-500">
-                When enabled, only approved followers can see your posts
+                When enabled, only approved friends can see your posts
               </p>
             </div>
             <button
@@ -152,6 +157,35 @@ export default function SettingsPage() {
                 }`}
               />
             </button>
+          </div>
+          
+          <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium flex items-center gap-2">
+                  <EyeOff className="h-4 w-4" />
+                  Hide from Search
+                </p>
+                <p className="text-sm text-neutral-500">
+                  When enabled, only friends can find you in search
+                </p>
+              </div>
+              <button
+                onClick={handleToggleDiscoverable}
+                disabled={updateProfile.isPending}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  profile?.is_discoverable === false
+                    ? 'bg-primary-500'
+                    : 'bg-neutral-300 dark:bg-neutral-700'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                    profile?.is_discoverable === false ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
       </div>

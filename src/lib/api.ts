@@ -187,6 +187,18 @@ export const likesApi = {
 export const commentsApi = {
   async getComments(postId: string) {
     const supabase = getSupabase();
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    
+    // Get current user's friends
+    let currentUserFriendIds: string[] = [];
+    if (currentUser) {
+      const { data: myFriends } = await supabase
+        .from('friendships')
+        .select('friend_id')
+        .eq('user_id', currentUser.id);
+      currentUserFriendIds = (myFriends || []).map((f: any) => f.friend_id);
+    }
+    
     const { data, error } = await supabase
       .from('comments')
       .select(`
@@ -199,9 +211,19 @@ export const commentsApi = {
 
     if (error) throw error;
 
+    // Filter out comments from non-discoverable users (unless they're friends or the current user)
+    const filterHiddenUsers = (comments: any[]) => {
+      return comments.filter((comment: any) => {
+        const profile = comment.profiles;
+        return profile?.is_discoverable !== false || 
+               profile?.id === currentUser?.id ||
+               currentUserFriendIds.includes(profile?.id);
+      });
+    };
+
     // Get replies for each comment
     const commentsWithReplies = await Promise.all(
-      ((data || []) as any[]).map(async (comment: any) => {
+      filterHiddenUsers((data || []) as any[]).map(async (comment: any) => {
         const { data: replies } = await supabase
           .from('comments')
           .select(`
@@ -211,9 +233,12 @@ export const commentsApi = {
           .eq('parent_id', comment.id)
           .order('created_at', { ascending: true });
 
+        // Filter replies too
+        const filteredReplies = filterHiddenUsers(replies || []);
+
         return {
           ...comment,
-          replies: replies || [],
+          replies: filteredReplies,
         } as CommentWithAuthor;
       })
     );
@@ -355,6 +380,18 @@ export const profilesApi = {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     
+    // Get current user's friends (they can always be found)
+    let friendIds: string[] = [];
+    if (user) {
+      const { data: friends } = await supabase
+        .from('friendships')
+        .select('friend_id')
+        .eq('user_id', user.id);
+      
+      friendIds = (friends || []).map((f: any) => f.friend_id);
+    }
+    
+    // Search all profiles matching the query
     let queryBuilder = supabase
       .from('profiles')
       .select('*')
@@ -369,7 +406,13 @@ export const profilesApi = {
     const { data, error } = await queryBuilder;
 
     if (error) throw error;
-    return (data || []) as Profile[];
+    
+    // Filter out non-discoverable users (unless they're friends)
+    const filteredData = (data || []).filter((profile: any) => 
+      profile.is_discoverable !== false || friendIds.includes(profile.id)
+    );
+    
+    return filteredData as Profile[];
   },
 
   async getSuggestedUsers(limit: number = 5) {
@@ -398,9 +441,11 @@ export const profilesApi = {
     const excludeIds = Array.from(new Set([...friendIds, ...pendingRequestIds, user.id]));
 
     // Get suggested users: newest users that aren't friends yet and don't have pending requests
+    // Also filter out non-discoverable users
     let query = supabase
       .from('profiles')
       .select('*')
+      .eq('is_discoverable', true)
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -458,6 +503,7 @@ export const friendsApi = {
 
   async getFriends(userId: string) {
     const supabase = getSupabase();
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
     
     // Get friend IDs first
     const { data: friendships, error: friendshipsError } = await supabase
@@ -476,7 +522,25 @@ export const friendsApi = {
       .in('id', friendIds);
 
     if (friendsError) throw friendsError;
-    return friends || [];
+    
+    // Get current user's friends to check visibility
+    let currentUserFriendIds: string[] = [];
+    if (currentUser) {
+      const { data: myFriends } = await supabase
+        .from('friendships')
+        .select('friend_id')
+        .eq('user_id', currentUser.id);
+      currentUserFriendIds = (myFriends || []).map((f: any) => f.friend_id);
+    }
+    
+    // Filter out non-discoverable users (unless they're friends with current user or it's the current user)
+    const filteredFriends = (friends || []).filter((profile: any) => 
+      profile.is_discoverable !== false || 
+      profile.id === currentUser?.id ||
+      currentUserFriendIds.includes(profile.id)
+    );
+    
+    return filteredFriends;
   },
 
   async areFriends(otherUserId: string): Promise<boolean> {

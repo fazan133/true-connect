@@ -85,7 +85,7 @@ export function SignupForm() {
       <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-xl p-8 border border-neutral-200 dark:border-neutral-800">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-500 to-primary-700 bg-clip-text text-transparent">
-            True-Connect
+            TrueConnect
           </h1>
           <p className="text-neutral-600 dark:text-neutral-400 mt-2">
             Create your account and connect with others.

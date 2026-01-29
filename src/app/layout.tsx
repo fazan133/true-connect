@@ -7,13 +7,20 @@ import { Toaster } from 'react-hot-toast';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'True-Connect | Social Network',
-  description: 'Connect with friends and share moments on True-Connect',
+  title: 'TrueConnect | Social Network',
+  description: 'Connect with friends and share moments on TrueConnect',
   manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
+    apple: '/icon-192.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'True-Connect',
+    title: 'TrueConnect',
   },
   formatDetection: {
     telephone: false,

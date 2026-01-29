@@ -17,6 +17,7 @@ export interface Database {
           bio: string | null
           avatar_url: string | null
           is_private: boolean
+          is_discoverable: boolean
           email: string | null
           created_at: string
           updated_at: string
@@ -28,6 +29,7 @@ export interface Database {
           bio?: string | null
           avatar_url?: string | null
           is_private?: boolean
+          is_discoverable?: boolean
           email?: string | null
           created_at?: string
           updated_at?: string
@@ -39,6 +41,7 @@ export interface Database {
           bio?: string | null
           avatar_url?: string | null
           is_private?: boolean
+          is_discoverable?: boolean
           email?: string | null
           created_at?: string
           updated_at?: string

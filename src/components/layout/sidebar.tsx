@@ -28,7 +28,7 @@ export function Sidebar() {
       <aside className="hidden lg:flex flex-col fixed left-0 top-0 h-screen w-64 bg-white dark:bg-neutral-950 border-r border-neutral-200 dark:border-neutral-800 p-4 z-40">
         <Link href="/feed" className="flex items-center gap-2 px-3 py-4 mb-4">
           <span className="text-2xl font-bold bg-gradient-to-r from-primary-500 to-primary-700 bg-clip-text text-transparent">
-            True-Connect
+            TrueConnect
           </span>
         </Link>
 

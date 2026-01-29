@@ -12,7 +12,7 @@ export function Header() {
       <header className="lg:hidden sticky top-0 z-30 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-md border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center justify-between px-4 h-14">
           <Link href="/feed" className="text-xl font-bold bg-gradient-to-r from-primary-500 to-primary-700 bg-clip-text text-transparent">
-            True-Connect
+            TrueConnect
           </Link>
           <div className="flex items-center gap-2">
             <Link
